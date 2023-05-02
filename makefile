@@ -1,14 +1,21 @@
 CC=gcc
 CFLAGS=-Wall
 
-STNC_EXE=stnc.c
-STNC=stnc
+STNC_A=stnc.c
+STNC_B=stncB.c
+
+STNC_A_EXE=stncA
+STNC_B_EXE=stncB
+
 .PHONY: all clean
 
-all:$(STNC)
+all: $(STNC_A_EXE) $(STNC_B_EXE)
 
-$(STNC): $(STNC_EXE)
+$(STNC_A_EXE): $(STNC_A)
+	$(CC) $(CFLAGS) -o $@ $^
+
+$(STNC_B_EXE): $(STNC_B)
 	$(CC) $(CFLAGS) -o $@ $^
 
 clean:
-	rm -f $(SERVER_EXE) $(STNC)
+	rm -f $(STNC_A_EXE) $(STNC_B_EXE)
