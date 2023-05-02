@@ -90,7 +90,7 @@ int client(int argc, char *argv[]) {
     return 0;
 }
 int server(int argc, char *argv[]) {
-    int max_clients = 5;
+    int max_clients = 1;
     int client_sockets[max_clients];
     fd_set read_fds;
     int max_fd;
