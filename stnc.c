@@ -72,13 +72,11 @@ int server(int argc, char *argv[]) {
         printf("\nUsage: %s -s PORT\n", argv[0]);
         return -1;
     }
-
     // Create socket
     if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0){
         printf("\nSocket creation error \n");
         return -1;
     }
-
     // Set socket options
     if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | 15, &opt, sizeof(opt))){
         printf("\nSetsockopt error \n");
