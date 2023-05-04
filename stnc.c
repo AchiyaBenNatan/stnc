@@ -8,259 +8,178 @@
 #include <sys/select.h>
 
 #define BUF_SIZE 104857
-int client(int argc, char *argv[])
-{
-
-    int sock = 0, valread = -1;
-    struct sockaddr_in serv_addr;
-    char buffer[BUF_SIZE] = {0};
-    fd_set read_fds;
-
-    if (argc != 4)
-    {
-        printf("\nUsage: %s IP PORT\n", argv[0]);
-        return -1;
+int client(int argc, char *argv[]) {
+    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd == -1) {
+        perror("socket creation failed");
+        exit(EXIT_FAILURE);
     }
-
-    // Create socket
-    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-    {
-        printf("\n Socket creation error \n");
-        return -1;
-    }
-
-    memset(&serv_addr, '0', sizeof(serv_addr));
-
-    // Set socket address
+    struct sockaddr_in serv_addr = {0};
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_port = htons(atoi(argv[3]));
-
-    // Convert IPv4 and store in sin_addr
-    if (inet_pton(AF_INET, argv[2], &serv_addr.sin_addr) <= 0)
-    {
-        printf("\nInvalid address/ Address not supported \n");
-        return -1;
+    if (inet_pton(AF_INET, argv[2], &serv_addr.sin_addr) <= 0) {
+        perror("address invalid or not supported");
+        exit(EXIT_FAILURE);
     }
 
-    // Connect to server socket
-    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
-    {
-        printf("\nConnection Failed \n");
-        return -1;
+    if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) == -1) {
+        perror("connection failed");
+        exit(EXIT_FAILURE);
     }
 
-    printf("Connected to server\n");
+    fd_set readfds;
+    char message[BUF_SIZE];
 
-    // Add socket to read_fds set
-    FD_ZERO(&read_fds);
-    FD_SET(sock, &read_fds);
-    int flagClient = 0;
-    // Wait for activity on socket
-    int activity = select(sock + 1, &read_fds, NULL, NULL, NULL);
-    while (1)
-    {
-        if (flagClient == 0)
-        {
-            read(sock, buffer, BUF_SIZE);
-        }
-        flagClient = 1;
-        memset(buffer, 0, BUF_SIZE);
-        // printf("Connected to server\n");
-        if (activity < 0)
-        {
-            printf("\nSelect error \n");
-            return -1;
-        }
-        if (FD_ISSET(sock, &read_fds))
-        {
-            memset(buffer, 0, BUF_SIZE);
-            printf("Write: ");
-            fgets(buffer, BUF_SIZE, stdin);
-            // Send input to server socket
-            send(sock, buffer, strlen(buffer), 0);
-            memset(buffer, 0, BUF_SIZE);
-            // Receive data from server socket
-            valread = read(sock, buffer, BUF_SIZE);
-            if (valread == 0)
-            {
-                // Server disconnected
-                printf("Server disconnected\n");
+    while (1) {
+        FD_ZERO(&readfds);
+        FD_SET(sockfd, &readfds);
+        FD_SET(STDIN_FILENO, &readfds);
+
+        int maxfd = (sockfd > STDIN_FILENO) ? sockfd : STDIN_FILENO;
+        
+        select(maxfd + 1, &readfds, NULL, NULL, NULL);
+        if (FD_ISSET(sockfd, &readfds)) {
+            int n = recv(sockfd, message, BUF_SIZE, 0);
+            if (n == -1) {
+                perror("error receiving message");
+                exit(EXIT_FAILURE);
+            } else if (n == 0) {
+                printf("server closed the connection\n");
                 break;
+            } else {
+                message[n] = '\0';
+                printf("received message from server: %s\n", message);
             }
-            // Output received data to stdout
-            printf("Answer: %s\n", buffer);
+        }
+
+        if (FD_ISSET(STDIN_FILENO, &readfds)) {
+            if (fgets(message, BUF_SIZE, stdin) == NULL) {
+                perror("error reading input");
+                exit(EXIT_FAILURE);
+            }
+            int n = send(sockfd, message, strlen(message), 0);
+            if (n == -1) {
+                perror("error sending message");
+                exit(EXIT_FAILURE);
+            } else {
+                printf("sent message to server: %s\n", message);
+            }
         }
     }
-
-    // Close socket
-    close(sock);
-
+    close(sockfd);
     return 0;
 }
-int server(int argc, char *argv[])
-{
-    int max_clients = 1;
-    int client_sockets[max_clients];
-    fd_set read_fds;
-    int max_fd;
-    int server_fd, new_socket;
+int server(int argc, char *argv[]) {
+    int server_fd, new_socket, valread;
     struct sockaddr_in address;
     int opt = 1;
     int addrlen = sizeof(address);
-    char buffer[BUF_SIZE] = {0};
+    char buffer[1024] = {0};
+    fd_set readfds;
+    int max_sd, sd;
 
-    if (argc != 3)
-    {
-        printf("\nUsage: %s -s PORT\n", argv[0]);
-        return -1;
-    }
-
-    // Create server socket
+    // Create socket file descriptor
     if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0)
     {
-        printf("\nSocket creation error \n");
-        return -1;
+        perror("socket failed");
+        exit(EXIT_FAILURE);
     }
-
-    // Set socket options
+    
+    // Attach socket to the port
     if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | 15, &opt, sizeof(opt)))
     {
-        printf("\nSetsockopt error \n");
-        return -1;
+        perror("setsockopt");
+        exit(EXIT_FAILURE);
     }
-
-    memset(&address, '0', sizeof(address));
-
-    // Set socket address
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = INADDR_ANY;
     address.sin_port = htons(atoi(argv[2]));
 
-    // Bind socket to address
     if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0)
     {
-        printf("\nBind failed \n");
-        return -1;
+        perror("bind failed");
+        exit(EXIT_FAILURE);
     }
-
-    // Listen for incoming connections
     if (listen(server_fd, 3) < 0)
     {
-        printf("\nListen error \n");
-        return -1;
+        perror("listen");
+        exit(EXIT_FAILURE);
     }
+    printf("Server is listening on port %s\n", argv[2]);
+    // Initialize the fd_set
+    FD_ZERO(&readfds);
+    // Add the server socket to the fd_set
+    FD_SET(server_fd, &readfds);
+    max_sd = server_fd;
 
-    // Initialize client sockets array
-    for (int i = 0; i < max_clients; i++)
-    {
-        client_sockets[i] = 0;
-    }
-
-    // Add server socket to read_fds set
-    FD_ZERO(&read_fds);
-    FD_SET(server_fd, &read_fds);
-    max_fd = server_fd;
-    int flagClientServer = 0;
     while (1)
     {
-        // Wait for activity on any of the sockets
-        int activity = select(max_fd + 1, &read_fds, NULL, NULL, NULL);
-
-        if (activity < 0)
+        memset(buffer,0,sizeof(buffer));
+        // Wait for activity on one of the sockets
+        if (select(max_sd + 1, &readfds, NULL, NULL, NULL) < 0)
         {
-            printf("\nSelect error \n");
-            return -1;
+            perror("select");
+            exit(EXIT_FAILURE);
         }
-
-        // Check for activity on server socket
-        if (FD_ISSET(server_fd, &read_fds))
+        // Check if activity is on the server socket
+        if (FD_ISSET(server_fd, &readfds))
         {
+            // Accept new connection
             if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t *)&addrlen)) < 0)
             {
-                printf("\nAccept error \n");
-                return -1;
+                perror("accept");
+                exit(EXIT_FAILURE);
             }
+            printf("New connection, socket fd is %d, ip is: %s\n", new_socket, inet_ntoa(address.sin_addr));
 
-            // Add new client socket to client_sockets array
-            for (int i = 0; i < max_clients; i++)
+            // Add the new socket to the fd_set
+            FD_SET(new_socket, &readfds);
+            if (new_socket > max_sd)
             {
-                if (client_sockets[i] == 0)
-                {
-                    client_sockets[i] = new_socket;
-                    break;
-                }
+                max_sd = new_socket;
             }
-
-            // Add new client socket to read_fds set
-            FD_SET(new_socket, &read_fds);
-
-            // Update max_fd if necessary
-            if (new_socket > max_fd)
-            {
-                max_fd = new_socket;
-            }
-
-            printf("New client connected\n");
         }
 
-        // Check for activity on client sockets
-        for (int i = 0; i < max_clients; i++)
+        // Check if activity is on one of the client sockets
+        for (sd = server_fd + 1; sd <= max_sd; sd++)
         {
-            int client_socket = client_sockets[i];
-
-            if (FD_ISSET(client_socket, &read_fds))
+            if (FD_ISSET(sd, &readfds))
             {
-                // Receive data from client socket
-                if (flagClientServer == 0)
-                    send(client_socket, "start", strlen("start"), 0);
-                flagClientServer = 1;
-                int valread = read(client_socket, buffer, BUF_SIZE);
-                // printf("%s\n",buffer);
-                if (valread == 0)
+                if ((valread = read(sd, buffer, 1024)) == 0)
                 {
                     // Client disconnected
-                    printf("Client disconnected\n");
-
-                    // Remove client socket from client_sockets array
-                    client_sockets[i] = 0;
-
-                    // Remove client socket from read_fds set
-                    FD_CLR(client_socket, &read_fds);
-
-                    // Close client socket
-                    close(client_socket);
+                    getpeername(sd, (struct sockaddr *)&address, (socklen_t *)&addrlen);
+                    printf("Host disconnected, ip %s, port %d\n", inet_ntoa(address.sin_addr), ntohs(address.sin_port));
+                    close(sd);
+                    FD_CLR(sd, &readfds);
                 }
                 else
                 {
-                    // Output received data to stdout
-                    printf("Answer: %s\n", buffer);
-                    // Read input from stdin
-                    memset(buffer, 0, BUF_SIZE);
-                    printf("Write: ");
-                    fgets(buffer, BUF_SIZE, stdin);
-                    // Send input to client socket
-                    send(client_socket, buffer, strlen(buffer), 0);
-                    memset(buffer, 0, BUF_SIZE);
+                    // Handle the client message
+                    printf("Received message from client: %s\n", buffer);
+                    char message[BUF_SIZE];
+                    //fgets(message, BUF_SIZE, stdin);
+                    send(sd, "message", strlen("message"), 0);
+                    sleep(0.5);
+                    send(sd, "message", strlen("message"), 0);
+                    sleep(0.5);
+                    send(sd, "message", strlen("message"), 0);
                 }
             }
         }
     }
-
-    // Close server socket
-    close(server_fd);
-
     return 0;
 }
 int main(int argc, char *argv[])
 {
 
-    if (!strcmp(argv[1], "-c"))
+    if (!strcmp(argv[1],"-c"))
     {
-        client(argc, argv);
+        client(argc,argv);
     }
-    else if (!strcmp(argv[1], "-s"))
+    else if (!strcmp(argv[1],"-s"))
     {
-        server(argc, argv);
+        server(argc,argv);
     }
     else
     {
