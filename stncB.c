@@ -954,7 +954,7 @@ int uds_dgram_server(int argc, char *argv[])
 int main(int argc, char *argv[])
 {
 
-    if (argc < 4 || argc > 7)
+    if (argc < 3 || argc > 7)
     {
         puts("Incorrect number of arguments\n");
         printf("Server Usage: ...\n");
