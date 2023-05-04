@@ -157,7 +157,7 @@ int server(int argc, char *argv[]) {
                 {
                     // Handle the client message
                     printf("Received message from client: %s\n", buffer);
-                    char message[BUF_SIZE];
+                    //char message[BUF_SIZE];
                     //fgets(message, BUF_SIZE, stdin);
                     send(sd, "message", strlen("message"), 0);
                     sleep(0.5);
