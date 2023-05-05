@@ -14,14 +14,17 @@
 #define SERVER_SOCKET_PATH "/tmp/uds_dgram_server"
 #define CLIENT_SOCKET_PATH "/tmp/uds_dgram_client"
 #define FILENAME "file.txt"
+enum addr
+{
+    IPV4,
+    IPV6
+};
 
 unsigned short calculate_checksum(unsigned short *paddress, int len);
-int ipv4_tcp_client(int argc, char *argv[]);
-int ipv4_tcp_server(int argc, char *argv[]);
+int tcp_client(int argc, char *argv[], enum addr type);
+int tcp_server(int argc, char *argv[], enum addr type);
 int ipv4_udp_client(int argc, char *argv[]);
 int ipv4_udp_server(int argc, char *argv[]);
-int ipv6_tcp_client(int argc, char *argv[]);
-int ipv6_tcp_server(int argc, char *argv[]);
 int ipv6_udp_client(int argc, char *argv[]);
 int ipv6_udp_server(int argc, char *argv[]);
 int uds_stream_client(int argc, char *argv[]);
@@ -29,39 +32,78 @@ int uds_stream_server(int argc, char *argv[]);
 int uds_dgram_client(int argc, char *argv[]);
 int uds_dgram_server(int argc, char *argv[]);
 
-int ipv4_tcp_client(int argc, char *argv[])
+int tcp_client(int argc, char *argv[], enum addr type)
 {
     FILE *fp;
     int sock = 0;
     int dataStream = -1, sendStream = 0, totalSent = 0;
-    struct sockaddr_in serv_addr;
     char buffer[BUF_SIZE] = {0};
+    struct sockaddr_in serv_addr;
+    struct sockaddr_in6 serv_addr6;
     struct timeval start, end;
+    enum addr addrType = (type == 0) ? IPV4 : IPV6;
 
-    // Create socket
-    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+    if (addrType == IPV4)
     {
-        printf("\n Socket creation error \n");
-        return -1;
+        // Create socket
+        if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+        {
+            printf("\n Socket creation error \n");
+            return -1;
+        }
+
+        memset(&serv_addr, '0', sizeof(serv_addr));
+
+        // Set socket address
+        serv_addr.sin_family = AF_INET;
+        serv_addr.sin_port = htons(atoi(argv[3]));
+
+        // Convert IPv4 and store in sin_addr
+        if (inet_pton(AF_INET, argv[2], &serv_addr.sin_addr) <= 0)
+        {
+            printf("\nInvalid address/ Address not supported \n");
+            return -1;
+        }
+
+        // Connect to server socket
+        if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
+        {
+            printf("\nConnection Failed \n");
+            return -1;
+        }
     }
-
-    memset(&serv_addr, '0', sizeof(serv_addr));
-
-    // Set socket address
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(atoi(argv[3]));
-
-    // Convert IPv4 and store in sin_addr
-    if (inet_pton(AF_INET, argv[2], &serv_addr.sin_addr) <= 0)
+    else if (addrType == IPV6)
     {
-        printf("\nInvalid address/ Address not supported \n");
-        return -1;
+        // Create socket
+        if ((sock = socket(AF_INET6, SOCK_STREAM, 0)) < 0)
+        {
+            printf("\n Socket creation error \n");
+            return -1;
+        }
+
+        memset(&serv_addr, '0', sizeof(serv_addr6));
+
+        // Set socket address
+        serv_addr6.sin6_family = AF_INET6;
+        serv_addr6.sin6_port = htons(atoi(argv[3]));
+
+        // Convert IPv4 and store in sin_addr
+        if (inet_pton(AF_INET6, argv[2], &serv_addr6.sin6_addr) <= 0)
+        {
+            printf("\nInvalid address/ Address not supported \n");
+            return -1;
+        }
+
+        // Connect to server socket
+        if (connect(sock, (struct sockaddr *)&serv_addr6, sizeof(serv_addr6)) < 0)
+        {
+            printf("\nConnection Failed \n");
+            return -1;
+        }
     }
-
-    // Connect to server socket
-    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
+    else
     {
-        printf("\nConnection Failed \n");
+        printf("Invalid address type\n");
         return -1;
     }
 
@@ -98,39 +140,70 @@ int ipv4_tcp_client(int argc, char *argv[])
     close(sock);
     return 0;
 }
-int ipv4_tcp_server(int argc, char *argv[])
+
+int tcp_server(int argc, char *argv[], enum addr type)
 {
     int ServerSocket, ClientSocket;
     struct sockaddr_in serverAddr, clientAddr;
+    struct sockaddr_in6 serverAddr6, clientAddr6;
     socklen_t clientAddressLen;
     int opt = 1, bytes = 0, countbytes = 0;
     char buffer[BUF_SIZE] = {0};
+    enum addr addrType = (type == 0) ? IPV4 : IPV6;
 
-    // Create server socket
-    if ((ServerSocket = socket(AF_INET, SOCK_STREAM, 0)) == -1)
+    if (addrType == IPV4)
     {
-        printf("\nSocket creation error \n");
-        return -1;
+        // Create server socket
+        if ((ServerSocket = socket(AF_INET, SOCK_STREAM, 0)) == -1)
+        {
+            printf("\nSocket creation error \n");
+            return -1;
+        }
+
+        memset(&serverAddr, '0', sizeof(serverAddr));
+        memset(&clientAddr, '0', sizeof(clientAddr));
+        clientAddressLen = sizeof(clientAddr);
+
+        // Set socket address
+        serverAddr.sin_family = AF_INET;
+        serverAddr.sin_addr.s_addr = INADDR_ANY;
+        serverAddr.sin_port = htons(atoi(argv[2]));
+
+        // Bind socket to address
+        if (bind(ServerSocket, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0)
+        {
+            printf("\nBind failed \n");
+            return -1;
+        }
     }
-
-    // Set socket options
-    if (setsockopt(ServerSocket, SOL_SOCKET, SO_REUSEADDR | 15, &opt, sizeof(opt)))
+    else if (addrType == IPV6)
     {
-        printf("\nSetsockopt error \n");
-        return -1;
+        // Create server socket
+        if ((ServerSocket = socket(AF_INET6, SOCK_STREAM, 0)) == -1)
+        {
+            printf("\nSocket creation error \n");
+            return -1;
+        }
+
+        memset(&serverAddr6, '0', sizeof(serverAddr6));
+        memset(&clientAddr6, '0', sizeof(clientAddr6));
+        clientAddressLen = sizeof(clientAddr6);
+
+        // Set socket address
+        serverAddr6.sin6_family = AF_INET6;
+        serverAddr6.sin6_addr = in6addr_any;
+        serverAddr6.sin6_port = htons(atoi(argv[2]));
+
+        // Bind socket to address
+        if (bind(ServerSocket, (struct sockaddr *)&serverAddr6, sizeof(serverAddr6)) < 0)
+        {
+            printf("\nBind failed \n");
+            return -1;
+        }
     }
-
-    memset(&serverAddr, '0', sizeof(serverAddr));
-
-    // Set socket address
-    serverAddr.sin_family = AF_INET;
-    serverAddr.sin_addr.s_addr = INADDR_ANY;
-    serverAddr.sin_port = htons(atoi(argv[2]));
-
-    // Bind socket to address
-    if (bind(ServerSocket, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0)
+    else
     {
-        printf("\nBind failed \n");
+        printf("Invalid address type\n");
         return -1;
     }
 
@@ -142,13 +215,28 @@ int ipv4_tcp_server(int argc, char *argv[])
     }
     printf("Server is listening for incoming connections...\n");
 
-    memset(&clientAddr, 0, sizeof(clientAddr));
-    clientAddressLen = sizeof(clientAddr);
-
-    if ((ClientSocket = accept(ServerSocket, (struct sockaddr *)&clientAddr, &clientAddressLen)) < 0)
+    // Set socket options
+    if (setsockopt(ServerSocket, SOL_SOCKET, SO_REUSEADDR | 15, &opt, sizeof(opt)))
     {
-        printf("\nAccept error \n");
+        printf("\nSetsockopt error \n");
         return -1;
+    }
+
+    if (addrType == IPV4)
+    {
+        if ((ClientSocket = accept(ServerSocket, (struct sockaddr *)&clientAddr, &clientAddressLen)) < 0)
+        {
+            printf("\nAccept error \n");
+            return -1;
+        }
+    }
+    else if (addrType == IPV6)
+    {
+        if ((ClientSocket = accept(ServerSocket, (struct sockaddr *)&clientAddr6, &clientAddressLen)) < 0)
+        {
+            printf("\nAccept error \n");
+            return -1;
+        }
     }
 
     printf("Client connected\n");
@@ -176,6 +264,7 @@ int ipv4_tcp_server(int argc, char *argv[])
     close(ClientSocket);
     return 0;
 }
+
 
 int ipv4_udp_client(int argc, char *argv[])
 {
@@ -301,154 +390,7 @@ int ipv4_udp_server(int argc, char *argv[])
     close(ServerSocket);
     return 0;
 }
-int ipv6_tcp_client(int argc, char *argv[])
-{
-    FILE *fp;
-    int sock = 0;
-    int dataStream = -1, sendStream = 0, totalSent = 0;
-    struct sockaddr_in6 serv_addr;
-    char buffer[BUF_SIZE] = {0};
-    struct timeval start, end;
 
-    // Create socket
-    if ((sock = socket(AF_INET6, SOCK_STREAM, 0)) < 0)
-    {
-        printf("\n Socket creation error \n");
-        return -1;
-    }
-
-    memset(&serv_addr, '0', sizeof(serv_addr));
-
-    // Set socket address
-    serv_addr.sin6_family = AF_INET6;
-    serv_addr.sin6_port = htons(atoi(argv[3]));
-
-    // Convert IPv4 and store in sin_addr
-    if (inet_pton(AF_INET6, argv[2], &serv_addr.sin6_addr) <= 0)
-    {
-        printf("\nInvalid address/ Address not supported \n");
-        return -1;
-    }
-
-    // Connect to server socket
-    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
-    {
-        printf("\nConnection Failed \n");
-        return -1;
-    }
-
-    fp = fopen(FILENAME, "rb");
-    if (fp == NULL)
-    {
-        printf("fopen() failed\n");
-        exit(1);
-    }
-
-    printf("Connected to server\n");
-    gettimeofday(&start, 0);
-    while ((dataStream = fread(buffer, sizeof(char), sizeof(buffer), fp)) > 0)
-    {
-
-        sendStream = send(sock, buffer, dataStream, 0);
-        if (-1 == sendStream)
-        {
-            printf("send() failed");
-            exit(1);
-        }
-
-        totalSent += sendStream;
-        // printf("Bytes sent: %f\n", totalSent);
-        // printf("location in file %ld\n", ftell(fp));
-        sendStream = 0;
-        bzero(buffer, sizeof(buffer));
-    }
-    gettimeofday(&end, 0);
-    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
-    printf("Total bytes sent: %d\nTime elapsed: %lu miliseconds\n", totalSent, miliseconds);
-
-    // Close socket
-    close(sock);
-    return 0;
-
-}
-int ipv6_tcp_server(int argc, char *argv[])
-{
-    int ServerSocket, ClientSocket;
-    struct sockaddr_in6 serverAddr, clientAddr;
-    socklen_t clientAddressLen;
-    int opt = 1, bytes = 0, countbytes = 0;
-    char buffer[BUF_SIZE] = {0};
-
-    // Create server socket
-    if ((ServerSocket = socket(AF_INET6, SOCK_STREAM, 0)) == -1)
-    {
-        printf("\nSocket creation error \n");
-        return -1;
-    }
-
-    // Set socket options
-    if (setsockopt(ServerSocket, SOL_SOCKET, SO_REUSEADDR | 15, &opt, sizeof(opt)))
-    {
-        printf("\nSetsockopt error \n");
-        return -1;
-    }
-
-    memset(&serverAddr, '0', sizeof(serverAddr));
-
-    // Set socket address
-    serverAddr.sin6_family = AF_INET6;
-    serverAddr.sin6_addr = in6addr_any;
-    serverAddr.sin6_port = htons(atoi(argv[2]));
-
-    // Bind socket to address
-    if (bind(ServerSocket, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0)
-    {
-        printf("\nBind failed \n");
-        return -1;
-    }
-
-    // Listen for incoming connections
-    if (listen(ServerSocket, 3) < 0)
-    {
-        printf("\nListen error \n");
-        return -1;
-    }
-    printf("Server is listening for incoming connections...\n");
-
-    memset(&clientAddr, 0, sizeof(clientAddr));
-    clientAddressLen = sizeof(clientAddr);
-
-    if ((ClientSocket = accept(ServerSocket, (struct sockaddr *)&clientAddr, &clientAddressLen)) < 0)
-    {
-        printf("\nAccept error \n");
-        return -1;
-    }
-
-    printf("Client connected\n");
-
-    while (1)
-    {
-        if ((bytes = recv(ClientSocket, buffer, sizeof(buffer), 0)) < 0)
-        {
-            printf("recv failed. Sender inactive.\n");
-            close(ServerSocket);
-            close(ClientSocket);
-            return -1;
-        }
-        else if (countbytes && bytes == 0)
-        {
-            printf("Total bytes received: %d\n", countbytes);
-            break;
-        }
-
-        countbytes += bytes;
-    }
-
-    // Close server socket
-    close(ServerSocket);
-    close(ClientSocket);
-    return 0;
-}
 int ipv6_udp_client(int argc, char *argv[])
 {
     int sock = 0, valread = -1;
@@ -827,7 +769,7 @@ int main(int argc, char *argv[])
             {
                 if (!strcmp(argv[6], "tcp"))
                 {
-                    ipv4_tcp_client(argc, argv);
+                    tcp_client(argc, argv, IPV4);
                 }
                 else if (!strcmp(argv[6], "udp"))
                 {
@@ -838,7 +780,7 @@ int main(int argc, char *argv[])
             {
                 if (!strcmp(argv[6], "tcp"))
                 {
-                    ipv6_tcp_client(argc, argv);
+                    tcp_client(argc, argv, IPV6);
                 }
                 else if (!strcmp(argv[6], "udp"))
                 {
@@ -866,7 +808,7 @@ int main(int argc, char *argv[])
     }
     else if (!strcmp(argv[1], "-s"))
     {
-        ipv6_tcp_server(argc, argv);
+        tcp_server(argc, argv, IPV6);
     }
     else
     {
