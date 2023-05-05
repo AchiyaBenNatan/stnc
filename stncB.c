@@ -8,7 +8,14 @@
 #include <ctype.h>
 #include <sys/un.h>
 #include <sys/time.h>
+#include <sys/mman.h>
+#include <sys/types.h>
+#include <netinet/in.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
 
+#define SHM_NAME "/myshm"
 #define BUF_SIZE 64000
 #define SOCKET_PATH "/tmp/my_socket.sock"
 #define SERVER_SOCKET_PATH "/tmp/uds_dgram_server"
@@ -738,6 +745,112 @@ int uds_dgram_server(int argc, char *argv[])
 
     return 0;
 }
+int mmap_client(int argc, char *argv[])
+{
+    const char *endMsg = "FILEEND";
+    char buffer[BUF_SIZE] = {0};
+
+    // Open the file and get its size
+    FILE * fp = fopen("file.txt", "rb");
+    if (fp == NULL)
+    {
+        perror("open");
+        exit(EXIT_FAILURE);
+    }
+    fseek(fp, 0, SEEK_END);
+    long file_size = ftell(fp);
+    rewind(fp);
+
+    // Create a named shared memory object
+    int shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
+    if (shm_fd == -1)
+    {
+        perror("shm_open");
+        exit(EXIT_FAILURE);
+    }
+
+    // Set the size of the shared memory object
+    if (ftruncate(shm_fd, file_size) == -1)
+    {
+        perror("ftruncate");
+        exit(EXIT_FAILURE);
+    }
+
+    // Map the shared memory object into memory
+    char *shm_ptr = mmap(NULL, file_size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+    if (shm_ptr == MAP_FAILED)
+    {
+        perror("mmap");
+        exit(EXIT_FAILURE);
+    }
+
+    // Create a child process to read the file data into shared memory
+    pid_t pid = fork();
+    if (pid == -1)
+    {
+        perror("fork");
+        exit(EXIT_FAILURE);
+    }
+    if (pid == 0)
+    {
+        // Child process reads the file data into shared memory
+        if (fread(shm_ptr, 1, file_size, fp) != file_size)
+        {
+            perror("fread");
+            exit(EXIT_FAILURE);
+        }
+        exit(EXIT_SUCCESS);
+    }
+
+    // Parent process sends the data to the server
+    int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sockfd == -1)
+    {
+        perror("socket");
+        exit(EXIT_FAILURE);
+    }
+
+    struct sockaddr_in server_addr;
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = inet_addr(argv[2]);
+    server_addr.sin_port = htons(atoi(argv[3]));
+
+    // Wait for the child process to finish reading the file
+    int status;
+    wait(&status);
+    if (WIFEXITED(status) && WEXITSTATUS(status) == EXIT_SUCCESS)
+    {
+
+        // Send the file data in chunks
+        size_t remaining = file_size;
+        char *data_ptr = shm_ptr;
+        while (remaining > 0)
+        {
+            size_t chunk_size = remaining < BUF_SIZE ? remaining : BUF_SIZE;
+            ssize_t num_bytes_sent = sendto(sockfd, data_ptr, chunk_size, 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
+            if (num_bytes_sent == -1)
+            {
+                perror("sendto");
+                exit(EXIT_FAILURE);
+            }
+            data_ptr += num_bytes_sent;
+            remaining -= num_bytes_sent;
+        }
+    }
+    else
+    {
+        perror("child process failed to read file");
+        exit(EXIT_FAILURE);
+    }
+    strcpy(buffer, endMsg);
+    sendto(sockfd, buffer, strlen(buffer), 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
+    close(sockfd);
+    fclose(fp);
+    munmap(shm_ptr, file_size);
+    shm_unlink(SHM_NAME);
+    return 0;
+}
+
 int main(int argc, char *argv[])
 {
 
@@ -788,6 +901,7 @@ int main(int argc, char *argv[])
             }
             else if (!strcmp(argv[5], "mmap"))
             {
+                mmap_client(argc, argv);
             }
             else if (!strcmp(argv[5], "pipe"))
             {
@@ -796,7 +910,7 @@ int main(int argc, char *argv[])
     }
     else if (!strcmp(argv[1], "-s"))
     {
-        udp_server(argc, argv, IPV6);
+        udp_server(argc, argv, IPV4);
     }
     else
     {
