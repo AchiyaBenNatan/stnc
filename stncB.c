@@ -181,7 +181,7 @@ int ipv4_udp_client(int argc, char *argv[])
 {
     FILE *fp;
     int sock = 0;
-    int dataStream = -1, sendStream = 0, totalSent = 0;
+    int dataGram = -1, sendStream = 0, totalSent = 0;
     struct sockaddr_in serv_addr;
     char buffer[BUF_SIZE] = {0};
     struct timeval start, end;
@@ -217,10 +217,10 @@ int ipv4_udp_client(int argc, char *argv[])
     printf("Connected to server\n");
 
     gettimeofday(&start, 0);
-    while ((dataStream = fread(buffer, sizeof(char), sizeof(buffer), fp)) > 0)
+    while ((dataGram = fread(buffer, sizeof(char), sizeof(buffer), fp)) > 0)
     {
 
-        sendStream = sendto(sock, buffer, dataStream, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+        sendStream = sendto(sock, buffer, dataGram, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
         if (-1 == sendStream)
         {
             printf("send() failed");
@@ -303,11 +303,12 @@ int ipv4_udp_server(int argc, char *argv[])
 }
 int ipv6_tcp_client(int argc, char *argv[])
 {
-
-    int sock = 0, valread = -1;
-    struct sockaddr_in6 server_addr;
+    FILE *fp;
+    int sock = 0;
+    int dataStream = -1, sendStream = 0, totalSent = 0;
+    struct sockaddr_in6 serv_addr;
     char buffer[BUF_SIZE] = {0};
-    fd_set read_fds;
+    struct timeval start, end;
 
     // Create socket
     if ((sock = socket(AF_INET6, SOCK_STREAM, 0)) < 0)
@@ -316,219 +317,136 @@ int ipv6_tcp_client(int argc, char *argv[])
         return -1;
     }
 
-    memset(&server_addr, '0', sizeof(server_addr));
+    memset(&serv_addr, '0', sizeof(serv_addr));
 
     // Set socket address
-    server_addr.sin6_family = AF_INET6;
-    server_addr.sin6_port = htons(atoi(argv[3]));
+    serv_addr.sin6_family = AF_INET6;
+    serv_addr.sin6_port = htons(atoi(argv[3]));
 
     // Convert IPv4 and store in sin_addr
-    if (inet_pton(AF_INET6, argv[2], &server_addr.sin6_addr) <= 0)
+    if (inet_pton(AF_INET6, argv[2], &serv_addr.sin6_addr) <= 0)
     {
         printf("\nInvalid address/ Address not supported \n");
         return -1;
     }
 
     // Connect to server socket
-    if (connect(sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0)
+    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
     {
         printf("\nConnection Failed \n");
         return -1;
     }
 
-    printf("Connected to server\n");
-
-    // Add socket to read_fds set
-    FD_ZERO(&read_fds);
-    FD_SET(sock, &read_fds);
-    int flagClient = 0;
-    // Wait for activity on socket
-    int activity = select(sock + 1, &read_fds, NULL, NULL, NULL);
-    while (1)
+    fp = fopen(FILENAME, "rb");
+    if (fp == NULL)
     {
-        if (flagClient == 0)
-        {
-            read(sock, buffer, BUF_SIZE);
-        }
-        flagClient = 1;
-        memset(buffer, 0, BUF_SIZE);
-        // printf("Connected to server\n");
-        if (activity < 0)
-        {
-            printf("\nSelect error \n");
-            return -1;
-        }
-        if (FD_ISSET(sock, &read_fds))
-        {
-            memset(buffer, 0, BUF_SIZE);
-            printf("Write: ");
-            fgets(buffer, BUF_SIZE, stdin);
-            // Send input to server socket
-            send(sock, buffer, strlen(buffer), 0);
-            memset(buffer, 0, BUF_SIZE);
-            // Receive data from server socket
-            valread = read(sock, buffer, BUF_SIZE);
-            if (valread == 0)
-            {
-                // Server disconnected
-                printf("Server disconnected\n");
-                break;
-            }
-            // Output received data to stdout
-            printf("Answer: %s\n", buffer);
-        }
+        printf("fopen() failed\n");
+        exit(1);
     }
+
+    printf("Connected to server\n");
+    gettimeofday(&start, 0);
+    while ((dataStream = fread(buffer, sizeof(char), sizeof(buffer), fp)) > 0)
+    {
+
+        sendStream = send(sock, buffer, dataStream, 0);
+        if (-1 == sendStream)
+        {
+            printf("send() failed");
+            exit(1);
+        }
+
+        totalSent += sendStream;
+        // printf("Bytes sent: %f\n", totalSent);
+        // printf("location in file %ld\n", ftell(fp));
+        sendStream = 0;
+        bzero(buffer, sizeof(buffer));
+    }
+    gettimeofday(&end, 0);
+    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
+    printf("Total bytes sent: %d\nTime elapsed: %lu miliseconds\n", totalSent, miliseconds);
 
     // Close socket
     close(sock);
-
     return 0;
+
 }
 int ipv6_tcp_server(int argc, char *argv[])
 {
-    int max_clients = 1;
-    int client_sockets[max_clients];
-    fd_set read_fds;
-    int max_fd;
-    int server_fd, new_socket;
-    struct sockaddr_in6 address;
-    int opt = 1;
-    int addrlen = sizeof(address);
+    int ServerSocket, ClientSocket;
+    struct sockaddr_in6 serverAddr, clientAddr;
+    socklen_t clientAddressLen;
+    int opt = 1, bytes = 0, countbytes = 0;
     char buffer[BUF_SIZE] = {0};
 
     // Create server socket
-    if ((server_fd = socket(AF_INET6, SOCK_STREAM, 0)) == 0)
+    if ((ServerSocket = socket(AF_INET6, SOCK_STREAM, 0)) == -1)
     {
         printf("\nSocket creation error \n");
         return -1;
     }
 
     // Set socket options
-    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | 15, &opt, sizeof(opt)))
+    if (setsockopt(ServerSocket, SOL_SOCKET, SO_REUSEADDR | 15, &opt, sizeof(opt)))
     {
         printf("\nSetsockopt error \n");
         return -1;
     }
 
-    memset(&address, '0', sizeof(address));
+    memset(&serverAddr, '0', sizeof(serverAddr));
 
     // Set socket address
-    address.sin6_family = AF_INET6;
-    address.sin6_addr = in6addr_any;
-    address.sin6_port = htons(atoi(argv[2]));
+    serverAddr.sin6_family = AF_INET6;
+    serverAddr.sin6_addr = in6addr_any;
+    serverAddr.sin6_port = htons(atoi(argv[2]));
 
     // Bind socket to address
-    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0)
+    if (bind(ServerSocket, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0)
     {
         printf("\nBind failed \n");
         return -1;
     }
-    // printf("listening\n");
-    //  Listen for incoming connections
-    if (listen(server_fd, 3) < 0)
+
+    // Listen for incoming connections
+    if (listen(ServerSocket, 3) < 0)
     {
         printf("\nListen error \n");
         return -1;
     }
-    // Initialize client sockets array
-    for (int i = 0; i < max_clients; i++)
+    printf("Server is listening for incoming connections...\n");
+
+    memset(&clientAddr, 0, sizeof(clientAddr));
+    clientAddressLen = sizeof(clientAddr);
+
+    if ((ClientSocket = accept(ServerSocket, (struct sockaddr *)&clientAddr, &clientAddressLen)) < 0)
     {
-        client_sockets[i] = 0;
+        printf("\nAccept error \n");
+        return -1;
     }
 
-    // Add server socket to read_fds set
-    FD_ZERO(&read_fds);
-    FD_SET(server_fd, &read_fds);
-    max_fd = server_fd;
-    int flagClientServer = 0;
+    printf("Client connected\n");
 
     while (1)
     {
-        // Wait for activity on any of the sockets
-        int activity = select(max_fd + 1, &read_fds, NULL, NULL, NULL);
-        if (activity < 0)
+        if ((bytes = recv(ClientSocket, buffer, sizeof(buffer), 0)) < 0)
         {
-            printf("\nSelect error \n");
+            printf("recv failed. Sender inactive.\n");
+            close(ServerSocket);
+            close(ClientSocket);
             return -1;
         }
-        // Check for activity on server socket
-        if (FD_ISSET(server_fd, &read_fds))
+        else if (countbytes && bytes == 0)
         {
-            if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t *)&addrlen)) < 0)
-            {
-                printf("\nAccept error \n");
-                return -1;
-            }
-            // printf("done listening\n");
-
-            // Add new client socket to client_sockets array
-            for (int i = 0; i < max_clients; i++)
-            {
-                if (client_sockets[i] == 0)
-                {
-                    client_sockets[i] = new_socket;
-                    break;
-                }
-            }
-
-            // Add new client socket to read_fds set
-            FD_SET(new_socket, &read_fds);
-
-            // Update max_fd if necessary
-            if (new_socket > max_fd)
-            {
-                max_fd = new_socket;
-            }
-
-            printf("New client connected\n");
+            printf("Total bytes received: %d\n", countbytes);
+            break;
         }
 
-        // Check for activity on client sockets
-        for (int i = 0; i < max_clients; i++)
-        {
-            int client_socket = client_sockets[i];
-
-            if (FD_ISSET(client_socket, &read_fds))
-            {
-                // Receive data from client socket
-                if (flagClientServer == 0)
-                    send(client_socket, "start", strlen("start"), 0);
-                flagClientServer = 1;
-                int valread = read(client_socket, buffer, BUF_SIZE);
-                // printf("%s\n",buffer);
-                if (valread == 0)
-                {
-                    // Client disconnected
-                    printf("Client disconnected\n");
-
-                    // Remove client socket from client_sockets array
-                    client_sockets[i] = 0;
-
-                    // Remove client socket from read_fds set
-                    FD_CLR(client_socket, &read_fds);
-
-                    // Close client socket
-                    close(client_socket);
-                }
-                else
-                {
-                    // Output received data to stdout
-                    printf("Answer: %s\n", buffer);
-                    // Read input from stdin
-                    memset(buffer, 0, BUF_SIZE);
-                    printf("Write: ");
-                    fgets(buffer, BUF_SIZE, stdin);
-                    // Send input to client socket
-                    send(client_socket, buffer, strlen(buffer), 0);
-                    memset(buffer, 0, BUF_SIZE);
-                }
-            }
-        }
+        countbytes += bytes;
     }
 
     // Close server socket
-    close(server_fd);
-
+    close(ServerSocket);
+    close(ClientSocket);
     return 0;
 }
 int ipv6_udp_client(int argc, char *argv[])
@@ -948,7 +866,7 @@ int main(int argc, char *argv[])
     }
     else if (!strcmp(argv[1], "-s"))
     {
-        ipv4_udp_server(argc, argv);
+        ipv6_tcp_server(argc, argv);
     }
     else
     {
