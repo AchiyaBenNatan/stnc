@@ -33,7 +33,7 @@ int ipv4_tcp_client(int argc, char *argv[])
 {
     FILE *fp;
     int sock = 0;
-    double dataStream = -1, sendStream = 0, totalSent = 0;
+    int dataStream = -1, sendStream = 0, totalSent = 0;
     struct sockaddr_in serv_addr;
     char buffer[BUF_SIZE] = {0};
     struct timeval start, end;
@@ -85,14 +85,14 @@ int ipv4_tcp_client(int argc, char *argv[])
         }
 
         totalSent += sendStream;
-        //printf("Bytes sent: %f\n", totalSent);
-        //printf("location in file %ld\n", ftell(fp));
+        // printf("Bytes sent: %f\n", totalSent);
+        // printf("location in file %ld\n", ftell(fp));
         sendStream = 0;
         bzero(buffer, sizeof(buffer));
     }
     gettimeofday(&end, 0);
     unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
-    printf("Total bytes sent: %f\nTime elapsed: %lu miliseconds\n", totalSent, miliseconds);
+    printf("Total bytes sent: %d\nTime elapsed: %lu miliseconds\n", totalSent, miliseconds);
 
     // Close socket
     close(sock);
@@ -103,7 +103,7 @@ int ipv4_tcp_server(int argc, char *argv[])
     int ServerSocket, ClientSocket;
     struct sockaddr_in serverAddr, clientAddr;
     socklen_t clientAddressLen;
-    double opt = 1, bytes = 0, countbytes = 0;
+    int opt = 1, bytes = 0, countbytes = 0;
     char buffer[BUF_SIZE] = {0};
 
     // Create server socket
@@ -164,7 +164,7 @@ int ipv4_tcp_server(int argc, char *argv[])
         }
         else if (countbytes && bytes == 0)
         {
-            printf("Total bytes received: %f\n", countbytes);
+            printf("Total bytes received: %d\n", countbytes);
             break;
         }
 
@@ -179,13 +179,16 @@ int ipv4_tcp_server(int argc, char *argv[])
 
 int ipv4_udp_client(int argc, char *argv[])
 {
-    int sock = 0, valread = -1;
+    FILE *fp;
+    int sock = 0;
+    int dataStream = -1, sendStream = 0, totalSent = 0;
     struct sockaddr_in serv_addr;
     char buffer[BUF_SIZE] = {0};
-    socklen_t addr_len = sizeof(serv_addr);
+    struct timeval start, end;
+    const char *endMsg = "FILEEND";
 
     // Create socket
-    if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) < 0)
+    if ((sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0)
     {
         printf("\n Socket creation error \n");
         return -1;
@@ -204,28 +207,37 @@ int ipv4_udp_client(int argc, char *argv[])
         return -1;
     }
 
+    fp = fopen(FILENAME, "rb");
+    if (fp == NULL)
+    {
+        printf("fopen() failed\n");
+        exit(1);
+    }
+
     printf("Connected to server\n");
 
-    while (1)
+    gettimeofday(&start, 0);
+    while ((dataStream = fread(buffer, sizeof(char), sizeof(buffer), fp)) > 0)
     {
-        memset(buffer, 0, BUF_SIZE);
-        printf("Write: ");
-        fgets(buffer, BUF_SIZE, stdin);
-        // Send input to server socket
-        sendto(sock, buffer, strlen(buffer), 0, (struct sockaddr *)&serv_addr, addr_len);
 
-        memset(buffer, 0, BUF_SIZE);
-        // Receive data from server socket
-        valread = recvfrom(sock, buffer, BUF_SIZE, 0, (struct sockaddr *)&serv_addr, &addr_len);
-        if (valread == 0)
+        sendStream = sendto(sock, buffer, dataStream, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+        if (-1 == sendStream)
         {
-            // Server disconnected
-            printf("Server disconnected\n");
-            break;
+            printf("send() failed");
+            exit(1);
         }
-        // Output received data to stdout
-        printf("Answer: %s\n", buffer);
+
+        totalSent += sendStream;
+        // printf("Bytes sent: %f\n", totalSent);
+        // printf("location in file %ld\n", ftell(fp));
+        sendStream = 0;
+        bzero(buffer, sizeof(buffer));
     }
+    gettimeofday(&end, 0);
+    strcpy(buffer, endMsg);
+    sendto(sock, buffer, strlen(buffer), 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
+    printf("Total bytes sent: %d\nTime elapsed: %lu miliseconds\n", totalSent, miliseconds);
 
     // Close socket
     close(sock);
@@ -234,52 +246,59 @@ int ipv4_udp_client(int argc, char *argv[])
 }
 int ipv4_udp_server(int argc, char *argv[])
 {
-    int server_fd;
-    struct sockaddr_in address, cli_addr;
-    socklen_t addr_len = sizeof(cli_addr);
-    char buffer[BUF_SIZE] = {0};
+    int ServerSocket;
+    struct sockaddr_in serverAddr, clientAddr;
+    socklen_t clientAddressLen;
+    int bytes = 0, countbytes = 0;
+    char buffer[BUF_SIZE] = {0}, decoded[BUF_SIZE];
 
     // Create server socket
-    if ((server_fd = socket(AF_INET, SOCK_DGRAM, 0)) == 0)
+    if ((ServerSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == 0)
     {
         printf("\nSocket creation error \n");
         return -1;
     }
 
-    memset(&address, '0', sizeof(address));
+    memset(&serverAddr, '0', sizeof(serverAddr));
+    memset(&clientAddr, '0', sizeof(clientAddr));
 
     // Set socket address
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(atoi(argv[2]));
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_addr.s_addr = INADDR_ANY;
+    serverAddr.sin_port = htons(atoi(argv[2]));
 
     // Bind socket to address
-    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0)
+    if (bind(ServerSocket, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0)
     {
         printf("\nBind failed \n");
         return -1;
     }
 
+    printf("Server is listening for incoming messages...\n");
+
     while (1)
     {
-        memset(buffer, 0, BUF_SIZE);
-        // Receive data from client socket
-        int valread = recvfrom(server_fd, buffer, BUF_SIZE, 0, (struct sockaddr *)&cli_addr, &addr_len);
-        if (valread == 0)
+        if ((bytes = recvfrom(ServerSocket, buffer, sizeof(buffer), 0, (struct sockaddr *)&clientAddr, &clientAddressLen)) < 0)
         {
-            // Client disconnected
-            printf("Client disconnected\n");
-            break;
+            printf("recv failed. Sender inactive.\n");
+            close(ServerSocket);
+            return -1;
         }
-        // Output received data to stdout
-        printf("Received: %s\n", buffer);
-        memset(buffer, 0, BUF_SIZE);
-        printf("Write: ");
-        fgets(buffer, BUF_SIZE, stdin);
-        sendto(server_fd, buffer, strlen(buffer), 0, (struct sockaddr *)&cli_addr, addr_len);
+        if (bytes < 10)
+        {
+            buffer[bytes] = '\0';
+            strncpy(decoded, buffer, sizeof(decoded));
+            if (strcmp(decoded, "FILEEND") == 0)
+            {
+                printf("Total bytes received from %s: %d\n", inet_ntoa(clientAddr.sin_addr), countbytes);
+                break;
+            }
+        }
+
+        countbytes += bytes;
     }
 
-    close(server_fd);
+    close(ServerSocket);
     return 0;
 }
 int ipv6_tcp_client(int argc, char *argv[])
@@ -929,7 +948,7 @@ int main(int argc, char *argv[])
     }
     else if (!strcmp(argv[1], "-s"))
     {
-        ipv4_tcp_server(argc, argv);
+        ipv4_udp_server(argc, argv);
     }
     else
     {
