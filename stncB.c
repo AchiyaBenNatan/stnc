@@ -15,12 +15,12 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 
-#define SHM_NAME "/myshm"
+#define SHM_NAME "/mySharedMemory"
 #define BUF_SIZE 64000
 #define SOCKET_PATH "/tmp/my_socket.sock"
 #define SERVER_SOCKET_PATH "/tmp/uds_dgram_server"
 #define CLIENT_SOCKET_PATH "/tmp/uds_dgram_client"
-#define FILENAME "file.txt"
+#define FILENAME "file2.txt"
 enum addr
 {
     IPV4,
@@ -747,106 +747,79 @@ int uds_dgram_server(int argc, char *argv[])
 }
 int mmap_client(int argc, char *argv[])
 {
-    const char *endMsg = "FILEEND";
-    char buffer[BUF_SIZE] = {0};
-
-    // Open the file and get its size
-    FILE * fp = fopen("file.txt", "rb");
-    if (fp == NULL)
+    int fd = open(argv[6], O_RDONLY);
+    if (fd == -1)
     {
-        perror("open");
-        exit(EXIT_FAILURE);
+        printf("open() failed\n");
+        return -1;
     }
-    fseek(fp, 0, SEEK_END);
-    long file_size = ftell(fp);
-    rewind(fp);
 
-    // Create a named shared memory object
+    struct stat sb;
+    if (fstat(fd, &sb) == -1)
+    {
+        printf("fstat() failed\n");
+        return -1;
+    }
+    off_t len = sb.st_size;
+    void *addr = mmap(NULL, len, PROT_READ, MAP_PRIVATE, fd, 0);
+    if (addr == MAP_FAILED)
+    {
+        printf("mmap() failed\n");
+        return -1;
+    }
+    close(fd);
+
     int shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
     if (shm_fd == -1)
     {
-        perror("shm_open");
-        exit(EXIT_FAILURE);
+        printf("shm_open() failed\n");
+        return -1;
     }
-
-    // Set the size of the shared memory object
-    if (ftruncate(shm_fd, file_size) == -1)
+    if (ftruncate(shm_fd, len) == -1)
     {
-        perror("ftruncate");
-        exit(EXIT_FAILURE);
+        printf("ftruncate() failed\n");
+        return -1;
     }
-
-    // Map the shared memory object into memory
-    char *shm_ptr = mmap(NULL, file_size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
-    if (shm_ptr == MAP_FAILED)
+    void *shm_addr = mmap(NULL, len, PROT_WRITE, MAP_SHARED, shm_fd, 0);
+    if (shm_addr == MAP_FAILED)
     {
-        perror("mmap");
-        exit(EXIT_FAILURE);
+        printf("mmap() failed\n");
+        return -1;
     }
+    memcpy(shm_addr, addr, len);
+    munmap(addr, len);
+    munmap(shm_addr, len);
+    close(shm_fd);
+    return 0;
+}
 
-    // Create a child process to read the file data into shared memory
-    pid_t pid = fork();
-    if (pid == -1)
-    {
-        perror("fork");
-        exit(EXIT_FAILURE);
-    }
-    if (pid == 0)
-    {
-        // Child process reads the file data into shared memory
-        if (fread(shm_ptr, 1, file_size, fp) != file_size)
-        {
-            perror("fread");
-            exit(EXIT_FAILURE);
-        }
-        exit(EXIT_SUCCESS);
-    }
+int mmap_server(int argc, char *argv[]){
 
-    // Parent process sends the data to the server
-    int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sockfd == -1)
+    int shm_fd = shm_open(SHM_NAME, O_RDONLY, 0666);
+    if (shm_fd == -1)
     {
-        perror("socket");
-        exit(EXIT_FAILURE);
+        printf("shm_open() failed\n");
+        return -1;
     }
-
-    struct sockaddr_in server_addr;
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = inet_addr(argv[2]);
-    server_addr.sin_port = htons(atoi(argv[3]));
-
-    // Wait for the child process to finish reading the file
-    int status;
-    wait(&status);
-    if (WIFEXITED(status) && WEXITSTATUS(status) == EXIT_SUCCESS)
+    struct stat sb;
+    if (fstat(shm_fd, &sb) == -1)
     {
+        printf("fstat() failed\n");
+        return -1;
+    }
+    off_t len = sb.st_size;
 
-        // Send the file data in chunks
-        size_t remaining = file_size;
-        char *data_ptr = shm_ptr;
-        while (remaining > 0)
-        {
-            size_t chunk_size = remaining < BUF_SIZE ? remaining : BUF_SIZE;
-            ssize_t num_bytes_sent = sendto(sockfd, data_ptr, chunk_size, 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
-            if (num_bytes_sent == -1)
-            {
-                perror("sendto");
-                exit(EXIT_FAILURE);
-            }
-            data_ptr += num_bytes_sent;
-            remaining -= num_bytes_sent;
-        }
-    }
-    else
+    void *addr = mmap(NULL, len, PROT_READ, MAP_SHARED, shm_fd, 0);
+    close(shm_fd);
+    if (addr == MAP_FAILED)
     {
-        perror("child process failed to read file");
-        exit(EXIT_FAILURE);
+        printf("mmap() failed\n");
+        return -1;
     }
-    strcpy(buffer, endMsg);
-    sendto(sockfd, buffer, strlen(buffer), 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
-    close(sockfd);
-    fclose(fp);
-    munmap(shm_ptr, file_size);
+    //fwrite(addr, len, 1, stdout);
+    printf("Shared memory size: %ld\n", len);
+    munmap(addr, len);
+
     shm_unlink(SHM_NAME);
     return 0;
 }
@@ -910,7 +883,7 @@ int main(int argc, char *argv[])
     }
     else if (!strcmp(argv[1], "-s"))
     {
-        udp_server(argc, argv, IPV4);
+        mmap_server(argc, argv);
     }
     else
     {
