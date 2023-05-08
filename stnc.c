@@ -30,6 +30,7 @@ enum addr
 };
 char *generate_rand_str(int length);
 unsigned short calculate_checksum(unsigned short *paddress, int len);
+int send_type_to_server(int argc, char *argv[], char *type);
 int tcp_client(int argc, char *argv[], enum addr type);
 int tcp_server(int argc, char *argv[], enum addr type);
 int udp_client(int argc, char *argv[], enum addr type);
@@ -38,6 +39,7 @@ int uds_stream_client(int argc, char *argv[]);
 int uds_stream_server(int argc, char *argv[]);
 int uds_dgram_client(int argc, char *argv[]);
 int uds_dgram_server(int argc, char *argv[]);
+
 int client(int argc, char *argv[])
 {
     int sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -267,26 +269,21 @@ int server(int argc, char *argv[])
     }
     return 0;
 }
-int tcp_client(int argc, char *argv[], enum addr type)
+int send_type_to_server(int argc, char *argv[], char *type)
 {
-    int socke = 0;
+    int sock = 0;
     struct sockaddr_in serv_addr;
-    enum addr addrType = (type == 0) ? IPV4 : IPV6;
-    char *bufferser;
-    if (addrType == IPV4)
-        bufferser = "tcp4";
-    else
-        bufferser = "tcp6";
+    char *bufferser = type;
 
     // Create socket
-    if ((socke = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
     {
         printf("\n Socket creation error \n");
         return -1;
     }
     // Set server address and port
     serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(atoi(argv[3])+1);
+    serv_addr.sin_port = htons(atoi(argv[3]) + 1);
     // Convert IPv4 and IPv6 addresses from text to binary form
     if (inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr) <= 0)
     {
@@ -294,13 +291,29 @@ int tcp_client(int argc, char *argv[], enum addr type)
         return -1;
     }
     // Connect to server
-    if (connect(socke, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
+    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
     {
         perror("\nConnection Failed \n");
         return -1;
     }
-    send(socke, bufferser, strlen(bufferser), 0);
+    send(sock, bufferser, strlen(bufferser), 0);
     usleep(5000);
+    close(sock);
+    return 1;
+}
+
+int tcp_client(int argc, char *argv[], enum addr type)
+{
+    char *serverType;
+    if (type == IPV4)
+    {
+        serverType = "tcp4";
+    }
+    else
+    {
+        serverType = "tcp6";
+    }
+    send_type_to_server(argc, argv, serverType);
     FILE *fp;
     int sock = 0;
     int dataStream = -1, sendStream = 0, totalSent = 0;
@@ -309,7 +322,7 @@ int tcp_client(int argc, char *argv[], enum addr type)
     struct sockaddr_in6 serv_addr6;
     struct timeval start, end;
 
-    if (addrType == IPV4)
+    if (type == IPV4)
     {
         // Create socket
         if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
@@ -340,7 +353,7 @@ int tcp_client(int argc, char *argv[], enum addr type)
             return -1;
         }
     }
-    else if (addrType == IPV6)
+    else if (type == IPV6)
     {
         // Create socket
         if ((sock = socket(AF_INET6, SOCK_STREAM, 0)) < 0)
@@ -399,19 +412,19 @@ int tcp_client(int argc, char *argv[], enum addr type)
     }
     gettimeofday(&end, 0);
     usleep(50000);
-    send(sock,"finish",sizeof("finish"),0);
+    send(sock, "finish", sizeof("finish"), 0);
     unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
     printf("Total bytes sent: %d\nTime elapsed: %lu miliseconds\n", totalSent, miliseconds);
     char str[20];
     sprintf(str, "%lu", miliseconds);
     usleep(50000);
-    
+
     if (send(sock, str, sizeof(str), 0) == -1)
     {
         perror("send() failed\n");
         exit(1);
     }
-    printf("%s\n",str);
+    printf("%s\n", str);
     // Close socket
     close(sock);
     return 0;
@@ -488,10 +501,10 @@ int tcp_server(int argc, char *argv[], enum addr type)
         printf("\nListen error \n");
         return -1;
     }
-    //printf("Server is listening for incoming connections...\n");
+    // printf("Server is listening for incoming connections...\n");
 
     // Set socket options
-    if (setsockopt(ServerSocket, SOL_SOCKET, SO_REUSEADDR , &opt, sizeof(opt)))
+    if (setsockopt(ServerSocket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)))
     {
         printf("\nSetsockopt error \n");
         return -1;
@@ -513,7 +526,7 @@ int tcp_server(int argc, char *argv[], enum addr type)
         }
     }
 
-    //printf("Client connected\n");
+    // printf("Client connected\n");
 
     while (1)
     {
@@ -524,7 +537,7 @@ int tcp_server(int argc, char *argv[], enum addr type)
             // close(ClientSocket);
             return -1;
         }
-        if (strcmp(buffer,"finish")==0)
+        if (strcmp(buffer, "finish") == 0)
         {
             // printf("Total bytes received: %d\n", countbytes);
             break;
@@ -535,11 +548,11 @@ int tcp_server(int argc, char *argv[], enum addr type)
     recv(ClientSocket, buffertime, sizeof(buffertime), 0);
     if (type == IPV4)
     {
-        printf("ipv4_tcp,%s\n",buffertime);
+        printf("ipv4_tcp,%s\n", buffertime);
     }
     else
     {
-        printf("ipv6_tcp,%s\n",buffertime);
+        printf("ipv6_tcp,%s\n", buffertime);
     }
     // Close server socket
     close(ServerSocket);
@@ -549,49 +562,27 @@ int tcp_server(int argc, char *argv[], enum addr type)
 
 int udp_client(int argc, char *argv[], enum addr type)
 {
-    int sock = 0;
-    struct sockaddr_in serv_addr;
-    enum addr addrType = (type == 0) ? IPV4 : IPV6;
-    char *bufferser;
-    if (addrType == IPV4)
-        bufferser = "udp4";
+    char *serverType;
+    if (type == IPV4)
+    {
+        serverType = "udp4";
+    }
     else
-        bufferser = "udp6";
+    {
+        serverType = "udp6";
+    }
+    send_type_to_server(argc, argv, serverType);
 
-    // Create socket
-    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-    {
-        printf("\n Socket creation error \n");
-        return -1;
-    }
-    // Set server address and port
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(atoi(argv[3])+1);
-    // Convert IPv4 and IPv6 addresses from text to binary form
-    if (inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr) <= 0)
-    {
-        printf("\nInvalid address/ Address not supported \n");
-        return -1;
-    }
-    // Connect to server
-    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
-    {
-        printf("\nConnection Failed \n");
-        return -1;
-    }
-    send(sock, bufferser, strlen(bufferser), 0);
-    usleep(50000);
     FILE *fp;
-    sock = 0;
+    int sock = 0;
     int dataGram = -1, sendStream = 0, totalSent = 0;
-    // struct sockaddr_in serv_addr;
+    struct sockaddr_in serv_addr;
     struct sockaddr_in6 serv_addr6;
     char buffer[BUF_SIZE] = {0};
     struct timeval start, end;
     const char *endMsg = "FILEEND";
-    // enum addr addrType = (type == 0) ? IPV4 : IPV6;
 
-    if (addrType == IPV4)
+    if (type == IPV4)
     {
         // Create socket
         if ((sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0)
@@ -613,7 +604,7 @@ int udp_client(int argc, char *argv[], enum addr type)
             return -1;
         }
     }
-    else if (addrType == IPV6)
+    else if (type == IPV6)
     {
         // Create socket
         if ((sock = socket(AF_INET6, SOCK_DGRAM, 0)) < 0)
@@ -649,11 +640,11 @@ int udp_client(int argc, char *argv[], enum addr type)
     gettimeofday(&start, 0);
     while ((dataGram = fread(buffer, sizeof(char), sizeof(buffer), fp)) > 0)
     {
-        if (addrType == IPV4)
+        if (type == IPV4)
         {
             sendStream = sendto(sock, buffer, dataGram, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
         }
-        else if (addrType == IPV6)
+        else if (type == IPV6)
         {
             sendStream = sendto(sock, buffer, dataGram, 0, (struct sockaddr *)&serv_addr6, sizeof(serv_addr6));
         }
@@ -673,11 +664,11 @@ int udp_client(int argc, char *argv[], enum addr type)
 
     gettimeofday(&end, 0);
     strcpy(buffer, endMsg);
-    if (addrType == IPV4)
+    if (type == IPV4)
     {
         sendto(sock, buffer, strlen(buffer), 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
     }
-    else if (addrType == IPV6)
+    else if (type == IPV6)
     {
         sendto(sock, buffer, strlen(buffer), 0, (struct sockaddr *)&serv_addr6, sizeof(serv_addr6));
     }
@@ -687,16 +678,16 @@ int udp_client(int argc, char *argv[], enum addr type)
     char str[20];
     sprintf(str, "%lu", miliseconds);
     usleep(50000);
-    
-    if (addrType == IPV4)
+
+    if (type == IPV4)
     {
         sendto(sock, str, strlen(str), 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
     }
-    else if (addrType == IPV6)
+    else if (type == IPV6)
     {
         sendto(sock, str, strlen(str), 0, (struct sockaddr *)&serv_addr6, sizeof(serv_addr6));
     }
-    printf("%s\n",str);
+    printf("%s\n", str);
     // Close socket
     close(sock);
 
@@ -768,7 +759,7 @@ int udp_server(int argc, char *argv[], enum addr type)
         return -1;
     }
 
-    //printf("Server is listening for incoming messages...\n");
+    // printf("Server is listening for incoming messages...\n");
     gettimeofday(&start, 0);
     while (1)
     {
@@ -794,7 +785,7 @@ int udp_server(int argc, char *argv[], enum addr type)
         {
             buffer[bytes] = '\0';
             strncpy(decoded, buffer, sizeof(decoded));
-            //printf("Total bytes received: %d\n", countbytes);
+            // printf("Total bytes received: %d\n", countbytes);
             break;
         }
 
@@ -804,11 +795,11 @@ int udp_server(int argc, char *argv[], enum addr type)
     unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
     if (type == IPV4)
     {
-        printf("ipv4_udp,%lu\n",miliseconds);
+        printf("ipv4_udp,%lu\n", miliseconds);
     }
     else
     {
-        printf("ipv6_udp,%lu\n",miliseconds);
+        printf("ipv6_udp,%lu\n", miliseconds);
     }
     close(ServerSocket);
     return 0;
@@ -816,34 +807,10 @@ int udp_server(int argc, char *argv[], enum addr type)
 
 int uds_stream_client(int argc, char *argv[])
 {
+    char *serverType = "udss";
+    send_type_to_server(argc, argv, serverType);
     int sock = 0;
-    struct sockaddr_in serv_addr;
-    char *bufferser;
-    bufferser = "udss";
-    // Create socket
-    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-    {
-        printf("\n Socket creation error \n");
-        return -1;
-    }
-    // Set server address and port
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(atoi(argv[3])+1);
-    // Convert IPv4 and IPv6 addresses from text to binary form
-    if (inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr) <= 0)
-    {
-        printf("\nInvalid address/ Address not supported \n");
-        return -1;
-    }
-    // Connect to server
-    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
-    {
-        printf("\nConnection Failed \n");
-        return -1;
-    }
-    send(sock, bufferser, strlen(bufferser), 0);
-    usleep(50000);
-    int valread =-1;
+    int valread = -1;
     valread++;
     struct sockaddr_un server_address;
     char buffer[BUF_SIZE];
@@ -866,13 +833,13 @@ int uds_stream_client(int argc, char *argv[])
 
     printf("Connected to server\n");
     struct timeval start, end;
-    FILE* fp = fopen(FILENAME, "rb");
+    FILE *fp = fopen(FILENAME, "rb");
     if (fp == NULL)
     {
         printf("fopen() failed\n");
         exit(1);
     }
-    int dataStream = -1,sendStream = 0,totalSent=0;
+    int dataStream = -1, sendStream = 0, totalSent = 0;
     printf("Connected to server\n");
     gettimeofday(&start, 0);
     while ((dataStream = fread(buffer, sizeof(char), sizeof(buffer), fp)) > 0)
@@ -892,7 +859,7 @@ int uds_stream_client(int argc, char *argv[])
     gettimeofday(&end, 0);
     unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
     printf("Total bytes sent: %d\nTime elapsed: %lu miliseconds\n", totalSent, miliseconds);
-    
+
     // Close socket
     close(sock);
     return 0;
@@ -929,7 +896,7 @@ int uds_stream_server(int argc, char *argv[])
         return -1;
     }
 
-    //printf("Server is listening for incoming connections...\n");
+    // printf("Server is listening for incoming connections...\n");
 
     // Accept incoming connections
     if ((client_fd = accept(server_fd, NULL, NULL)) == -1)
@@ -937,7 +904,7 @@ int uds_stream_server(int argc, char *argv[])
         printf("Failed to accept incoming connection\n");
         return -1;
     }
-    int bytes = 0,countbytes = 0;
+    int bytes = 0, countbytes = 0;
     gettimeofday(&start, 0);
     while (1)
     {
@@ -950,7 +917,7 @@ int uds_stream_server(int argc, char *argv[])
         }
         else if (countbytes && bytes == 0)
         {
-            //printf("Total bytes received: %d\n", countbytes);
+            // printf("Total bytes received: %d\n", countbytes);
             break;
         }
 
@@ -958,7 +925,7 @@ int uds_stream_server(int argc, char *argv[])
     }
     gettimeofday(&end, 0);
     unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
-    printf("uds_stream,%lu\n",miliseconds);
+    printf("uds_stream,%lu\n", miliseconds);
     close(client_fd);
     close(server_fd);
     unlink(SOCKET_PATH);
@@ -967,39 +934,15 @@ int uds_stream_server(int argc, char *argv[])
 int uds_dgram_client(int argc, char *argv[])
 {
     FILE *fp;
-    int sock = 0;
     int dataGram = -1, sendStream = 0, totalSent = 0;
     char buffer[BUF_SIZE] = {0};
     struct timeval start, end;
-    struct sockaddr_in serv_addr;
-    char *bufferser;
-    bufferser = "udsd";
-    // Create socket
-    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-    {
-        printf("\n Socket creation error \n");
-        return -1;
-    }
-    // Set server address and port
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(atoi(argv[3])+1);
-    // Convert IPv4 and IPv6 addresses from text to binary form
-    if (inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr) <= 0)
-    {
-        printf("\nInvalid address/ Address not supported \n");
-        return -1;
-    }
-    // Connect to server
-    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
-    {
-        printf("\nConnection Failed \n");
-        return -1;
-    }
-    send(sock, bufferser, strlen(bufferser), 0);
-    usleep(50000);
-     int send_sock;
+    char *serverType = "udsd";
+    send_type_to_server(argc, argv, serverType);
+
+    int send_sock;
     struct sockaddr_un server_address, client_address;
-    //char send_buffer[BUF_SIZE], recv_buffer[BUF_SIZE];
+    // char send_buffer[BUF_SIZE], recv_buffer[BUF_SIZE];
 
     // Create sending socket
     if ((send_sock = socket(AF_UNIX, SOCK_DGRAM, 0)) == -1)
@@ -1046,7 +989,7 @@ int uds_dgram_client(int argc, char *argv[])
     printf("Total bytes sent: %d\nTime elapsed: %lu miliseconds\n", totalSent, miliseconds);
     // Close sockets
     close(send_sock);
-    //close(recv_sock);
+    // close(recv_sock);
     unlink(CLIENT_SOCKET_PATH);
     return 0;
 }
@@ -1080,7 +1023,7 @@ int uds_dgram_server(int argc, char *argv[])
     gettimeofday(&start, 0);
     while (1)
     {
-        
+
         if ((bytes = recvfrom(server_fd, buffer, sizeof(buffer), 0, (struct sockaddr *)&client_addr, &clientAddressLen)) < 0)
         {
             printf("recv failed. Sender inactive.\n");
@@ -1094,7 +1037,7 @@ int uds_dgram_server(int argc, char *argv[])
             strncpy(decoded, buffer, sizeof(decoded));
             if (strcmp(decoded, "FILEEND") == 0)
             {
-                //printf("Total bytes received: %d\n", countbytes);
+                // printf("Total bytes received: %d\n", countbytes);
                 break;
             }
         }
@@ -1102,7 +1045,7 @@ int uds_dgram_server(int argc, char *argv[])
     }
     gettimeofday(&end, 0);
     unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
-    printf("uds_dgram,%lu\n",miliseconds);
+    printf("uds_dgram,%lu\n", miliseconds);
     close(server_fd);
     unlink(SERVER_SOCKET_PATH);
 
@@ -1122,7 +1065,7 @@ int mmap_client(int argc, char *argv[])
     }
     // Set server address and port
     serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(atoi(argv[3])+1);
+    serv_addr.sin_port = htons(atoi(argv[3]) + 1);
     // Convert IPv4 and IPv6 addresses from text to binary form
     if (inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr) <= 0)
     {
@@ -1137,7 +1080,8 @@ int mmap_client(int argc, char *argv[])
     }
     send(sock, bufferser, strlen(bufferser), 0);
     usleep(50000);
-    printf("%s\n",(argv[6]));
+
+    printf("%s\n", (argv[6]));
     int fd = open(argv[6], O_RDONLY);
     if (fd == -1)
     {
@@ -1230,7 +1174,7 @@ int getServer(int argc, char *argv[])
     }
 
     // Set socket options
-    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR , &opt, sizeof(opt)))
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)))
     {
         perror("setsockopt");
         exit(EXIT_FAILURE);
@@ -1239,7 +1183,7 @@ int getServer(int argc, char *argv[])
     // Bind socket to port
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(atoi(argv[2])+1);
+    address.sin_port = htons(atoi(argv[2]) + 1);
 
     if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0)
     {
@@ -1262,9 +1206,11 @@ int getServer(int argc, char *argv[])
     }
     memset(buffer, 0, 100);
     valread = read(new_socket, buffer, 100);
-    //printf("Client: %s\n", buffer);
+    // printf("Client: %s\n", buffer);
     if (strcmp(buffer, "tcp4") == 0)
+    {
         tcp_server(argc, argv, IPV4);
+    }
     else if (strcmp(buffer, "tcp6") == 0)
     {
         tcp_server(argc, argv, IPV6);
@@ -1306,9 +1252,9 @@ int main(int argc, char *argv[])
 
     if (!strcmp(argv[1], "-c"))
     {
-        if (argv[4]==NULL)
+        if (argv[4] == NULL)
         {
-            client(argc,argv);
+            client(argc, argv);
         }
         else if (!strcmp(argv[4], "-p"))
         {
@@ -1356,10 +1302,14 @@ int main(int argc, char *argv[])
     }
     else if (!strcmp(argv[1], "-s"))
     {
-        if (argv[3]!=NULL)
-            getServer(argc,argv);
+        if (argv[3] != NULL)
+        {
+            getServer(argc, argv);
+        }
         else
-            server(argc,argv);
+        {
+            server(argc, argv);
+        }
     }
     else
     {
