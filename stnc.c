@@ -18,7 +18,8 @@
 
 #define SHM_NAME "/mySharedMemory"
 #define BUF_SIZE 64000
-#define DATA_SIZE 104857600
+// #define DATA_SIZE 104857600
+#define DATA_SIZE 1048576
 #define SOCKET_PATH "/tmp/my_socket.sock"
 #define SERVER_SOCKET_PATH "/tmp/uds_dgram_server"
 #define CLIENT_SOCKET_PATH "/tmp/uds_dgram_client"
@@ -314,9 +315,8 @@ int tcp_client(int argc, char *argv[], enum addr type)
         serverType = "tcp6";
     }
     send_type_to_server(argc, argv, serverType);
-    FILE *fp;
     int sock = 0;
-    int dataStream = -1, sendStream = 0, totalSent = 0;
+    int sendStream = 0, totalSent = 0;
     char buffer[BUF_SIZE] = {0};
     struct sockaddr_in serv_addr4;
     struct sockaddr_in6 serv_addr6;
@@ -389,17 +389,16 @@ int tcp_client(int argc, char *argv[], enum addr type)
     }
 
     printf("Connected to server\n");
-    fp = fopen(FILENAME, "rb");
-    if (fp == NULL)
-    {
-        printf("fopen() failed\n");
-        exit(1);
-    }
-    gettimeofday(&start, 0);
-    while ((dataStream = fread(buffer, sizeof(char), sizeof(buffer), fp)) > 0)
-    {
 
-        sendStream = send(sock, buffer, dataStream, 0);
+    // Generate data
+    char *data = generate_rand_str(DATA_SIZE);
+
+    gettimeofday(&start, 0);
+    while (totalSent < strlen(data))
+    {
+        int bytes_to_read = (BUF_SIZE < strlen(data) - totalSent) ? BUF_SIZE : strlen(data) - totalSent;
+        memcpy(buffer, data + totalSent, bytes_to_read);
+        sendStream = send(sock, buffer, bytes_to_read, 0);
         if (-1 == sendStream)
         {
             printf("send() failed");
@@ -407,6 +406,8 @@ int tcp_client(int argc, char *argv[], enum addr type)
         }
 
         totalSent += sendStream;
+        // printf("Bytes sent: %d\n", totalSent);
+        // printf ("bytes to read: %d\n", bytes_to_read);
         sendStream = 0;
         bzero(buffer, sizeof(buffer));
     }
@@ -427,6 +428,7 @@ int tcp_client(int argc, char *argv[], enum addr type)
     printf("%s\n", str);
     // Close socket
     close(sock);
+    free(data);
     return 0;
 }
 
@@ -573,9 +575,8 @@ int udp_client(int argc, char *argv[], enum addr type)
     }
     send_type_to_server(argc, argv, serverType);
 
-    FILE *fp;
     int sock = 0;
-    int dataGram = -1, sendStream = 0, totalSent = 0;
+    int sendStream = 0, totalSent = 0;
     struct sockaddr_in serv_addr;
     struct sockaddr_in6 serv_addr6;
     char buffer[BUF_SIZE] = {0};
@@ -631,24 +632,22 @@ int udp_client(int argc, char *argv[], enum addr type)
         return -1;
     }
     usleep(50000);
-    fp = fopen(FILENAME, "rb");
-    if (fp == NULL)
-    {
-        printf("fopen() failed\n");
-        exit(1);
-    }
+    // Generate data
+    char *data = generate_rand_str(DATA_SIZE);
+
     gettimeofday(&start, 0);
-    while ((dataGram = fread(buffer, sizeof(char), sizeof(buffer), fp)) > 0)
+    while (totalSent < strlen(data))
     {
+        int bytes_to_read = (BUF_SIZE < strlen(data) - totalSent) ? BUF_SIZE : strlen(data) - totalSent;
+        memcpy(buffer, data + totalSent, bytes_to_read);
         if (type == IPV4)
         {
-            sendStream = sendto(sock, buffer, dataGram, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+            sendStream = sendto(sock, buffer, bytes_to_read, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
         }
         else if (type == IPV6)
         {
-            sendStream = sendto(sock, buffer, dataGram, 0, (struct sockaddr *)&serv_addr6, sizeof(serv_addr6));
+            sendStream = sendto(sock, buffer, bytes_to_read, 0, (struct sockaddr *)&serv_addr6, sizeof(serv_addr6));
         }
-
         if (-1 == sendStream)
         {
             printf("send() failed");
@@ -656,8 +655,8 @@ int udp_client(int argc, char *argv[], enum addr type)
         }
 
         totalSent += sendStream;
-        // printf("Bytes sent: %f\n", totalSent);
-        // printf("location in file %ld\n", ftell(fp));
+        // printf("Bytes sent: %d\n", totalSent);
+        // printf ("bytes to read: %d\n", bytes_to_read);
         sendStream = 0;
         bzero(buffer, sizeof(buffer));
     }
@@ -690,7 +689,7 @@ int udp_client(int argc, char *argv[], enum addr type)
     printf("%s\n", str);
     // Close socket
     close(sock);
-
+    free(data);
     return 0;
 }
 
