@@ -115,8 +115,21 @@ int tcp_client(int argc, char *argv[], enum addr type)
 
     printf("Connected to server\n");
 
+    // Generate data
     char * data = generate_rand_str(DATA_SIZE);
-    
+
+    // Calculate and send checksum
+    unsigned short checksum = calculate_checksum((unsigned short *)data, strlen(data));
+    unsigned short checksum_net = htons(checksum);
+    memcpy(buffer, &checksum_net, sizeof(checksum_net));
+    sendStream = send(sock, buffer, sizeof(checksum_net), 0);
+    if (-1 == sendStream)
+    {
+        printf("send() failed");
+        exit(1);
+    }
+
+    // Send data
     gettimeofday(&start, 0);
     while (totalSent < strlen(data))
     {
@@ -131,6 +144,7 @@ int tcp_client(int argc, char *argv[], enum addr type)
 
         totalSent += sendStream;
         //printf("Bytes sent: %d\n", totalSent);
+        //printf ("bytes to read: %d\n", bytes_to_read);
         sendStream = 0;
         bzero(buffer, sizeof(buffer));
     }
@@ -151,7 +165,7 @@ int tcp_server(int argc, char *argv[], enum addr type)
     struct sockaddr_in6 serverAddr6, clientAddr6;
     socklen_t clientAddressLen;
     int opt = 1, bytes = 0, countbytes = 0;
-    char buffer[BUF_SIZE] = {0};
+    char buffer[BUF_SIZE] = {0}, totalData[DATA_SIZE] = {0};
     enum addr addrType = (type == 0) ? IPV4 : IPV6;
 
     if (addrType == IPV4)
@@ -244,6 +258,17 @@ int tcp_server(int argc, char *argv[], enum addr type)
 
     printf("Client connected\n");
 
+    // Receive checksum
+    unsigned short received_checksum;
+    if ((bytes = recv(ClientSocket, &received_checksum, sizeof(received_checksum), 0)) < 0)
+    {
+        printf("recv failed. Sender inactive.\n");
+        close(ServerSocket);
+        close(ClientSocket);
+        return -1;
+    }
+    received_checksum = ntohs(received_checksum);
+
     while (1)
     {
         if ((bytes = recv(ClientSocket, buffer, sizeof(buffer), 0)) < 0)
@@ -259,7 +284,21 @@ int tcp_server(int argc, char *argv[], enum addr type)
             break;
         }
 
+        memcpy(totalData + countbytes, buffer, bytes);
+        //printf("bytes: %d\n", bytes);
+        //printf("totaldata: %ld\n", strlen(totalData));
         countbytes += bytes;
+    }
+
+    // Calculate checksum
+    unsigned short calculated_checksum = calculate_checksum((unsigned short *)totalData, strlen(totalData));
+    if (calculated_checksum == received_checksum)
+    {
+        printf("Checksums match\n");
+    }
+    else
+    {
+        printf("Checksums don't match\n");
     }
 
     // Close server socket
