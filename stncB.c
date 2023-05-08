@@ -17,6 +17,7 @@
 
 #define SHM_NAME "/mySharedMemory"
 #define BUF_SIZE 64000
+#define DATA_SIZE 1048575
 #define SOCKET_PATH "/tmp/my_socket.sock"
 #define SERVER_SOCKET_PATH "/tmp/uds_dgram_server"
 #define CLIENT_SOCKET_PATH "/tmp/uds_dgram_client"
@@ -27,6 +28,7 @@ enum addr
     IPV6
 };
 
+char *generate_rand_str(int length);
 unsigned short calculate_checksum(unsigned short *paddress, int len);
 int tcp_client(int argc, char *argv[], enum addr type);
 int tcp_server(int argc, char *argv[], enum addr type);
@@ -39,9 +41,8 @@ int uds_dgram_server(int argc, char *argv[]);
 
 int tcp_client(int argc, char *argv[], enum addr type)
 {
-    FILE *fp;
     int sock = 0;
-    int dataStream = -1, sendStream = 0, totalSent = 0;
+    int sendStream = 0, totalSent = 0;
     char buffer[BUF_SIZE] = {0};
     struct sockaddr_in serv_addr;
     struct sockaddr_in6 serv_addr6;
@@ -112,19 +113,16 @@ int tcp_client(int argc, char *argv[], enum addr type)
         return -1;
     }
 
-    fp = fopen(FILENAME, "rb");
-    if (fp == NULL)
-    {
-        printf("fopen() failed\n");
-        exit(1);
-    }
-
     printf("Connected to server\n");
-    gettimeofday(&start, 0);
-    while ((dataStream = fread(buffer, sizeof(char), sizeof(buffer), fp)) > 0)
-    {
 
-        sendStream = send(sock, buffer, dataStream, 0);
+    char * data = generate_rand_str(DATA_SIZE);
+    
+    gettimeofday(&start, 0);
+    while (totalSent < strlen(data))
+    {
+        int bytes_to_read = (BUF_SIZE < strlen(data) - totalSent) ? BUF_SIZE: strlen(data) - totalSent;
+        memcpy(buffer, data + totalSent, bytes_to_read);
+        sendStream = send(sock, buffer, bytes_to_read, 0);
         if (-1 == sendStream)
         {
             printf("send() failed");
@@ -132,8 +130,7 @@ int tcp_client(int argc, char *argv[], enum addr type)
         }
 
         totalSent += sendStream;
-        // printf("Bytes sent: %f\n", totalSent);
-        // printf("location in file %ld\n", ftell(fp));
+        //printf("Bytes sent: %d\n", totalSent);
         sendStream = 0;
         bzero(buffer, sizeof(buffer));
     }
@@ -143,6 +140,7 @@ int tcp_client(int argc, char *argv[], enum addr type)
 
     // Close socket
     close(sock);
+    free(data);
     return 0;
 }
 
@@ -793,7 +791,8 @@ int mmap_client(int argc, char *argv[])
     return 0;
 }
 
-int mmap_server(int argc, char *argv[]){
+int mmap_server(int argc, char *argv[])
+{
 
     int shm_fd = shm_open(SHM_NAME, O_RDONLY, 0666);
     if (shm_fd == -1)
@@ -816,7 +815,7 @@ int mmap_server(int argc, char *argv[]){
         printf("mmap() failed\n");
         return -1;
     }
-    //fwrite(addr, len, 1, stdout);
+    // fwrite(addr, len, 1, stdout);
     printf("Shared memory size: %ld\n", len);
     munmap(addr, len);
 
@@ -883,7 +882,7 @@ int main(int argc, char *argv[])
     }
     else if (!strcmp(argv[1], "-s"))
     {
-        mmap_server(argc, argv);
+        tcp_server(argc, argv, IPV4);
     }
     else
     {
@@ -919,4 +918,21 @@ unsigned short calculate_checksum(unsigned short *paddress, int len)
     answer = ~sum;                      // truncate to 16 bits
 
     return answer;
+}
+
+char *generate_rand_str(int length)
+{
+    char *string = malloc(length + 1);
+    if (!string)
+    {
+        return NULL;
+    }
+
+    for (int i = 0; i < length; i++)
+    {
+        int num = rand() % 26;
+        string[i] = 'a' + num;
+    }
+    string[length] = '\0';
+    return string;
 }
