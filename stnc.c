@@ -16,8 +16,9 @@
 #include <sys/wait.h>
 #include <errno.h>
 
-#define SHM_NAME "/FileSM"
+#define SHM_FILE "/FileSM"
 #define SHM_FILE_NAME "/FileName"
+#define SHM_FILE_CS "/FileCS"
 #define BUF_SIZE 64000
 // #define DATA_SIZE 104857600
 #define DATA_SIZE 1048576
@@ -29,6 +30,7 @@ enum addr
     IPV4,
     IPV6
 };
+
 // main functions
 int client(int argc, char *argv[]);
 int server(int argc, char *argv[]);
@@ -574,7 +576,7 @@ int udp_client(int argc, char *argv[], enum addr type)
     struct sockaddr_in6 serv_addr6;
     char buffer[BUF_SIZE] = {0};
     struct timeval start, end;
-    const char *endMsg = "FILEEND";
+    const char *endMsg = "END";
 
     if (type == IPV4)
     {
@@ -640,7 +642,6 @@ int udp_client(int argc, char *argv[], enum addr type)
     {
         sendStream = sendto(sock, buffer, sizeof(checksum_net), 0, (struct sockaddr *)&serv_addr6, sizeof(serv_addr6));
     }
-
     if (-1 == sendStream)
     {
         printf("send() failed");
@@ -800,8 +801,11 @@ int udp_server(int argc, char *argv[], enum addr type)
         {
             buffer[bytes] = '\0';
             strncpy(decoded, buffer, sizeof(decoded));
-            //printf("Total bytes received: %d\n", countbytes);
-            break;
+            if (strcmp(decoded, "END") == 0)
+            {
+                // printf("Total bytes received: %d\n", countbytes);
+                break;
+            }
         }
         memcpy(totalData + countbytes, buffer, bytes);
         countbytes += bytes;
@@ -857,6 +861,17 @@ int uds_stream_client(int argc, char *argv[])
     // Generate data
     char *data = generate_rand_str(DATA_SIZE);
 
+    // Calculate and send checksum
+    unsigned short checksum = calculate_checksum((unsigned short *)data, strlen(data));
+    unsigned short checksum_net = htons(checksum);
+    memcpy(buffer, &checksum_net, sizeof(checksum_net));
+    sendStream = send(sock, buffer, sizeof(checksum_net), 0);
+    if (-1 == sendStream)
+    {
+        printf("send() failed");
+        exit(1);
+    }
+
     gettimeofday(&start, 0);
     while (totalSent < strlen(data))
     {
@@ -888,8 +903,9 @@ int uds_stream_server(int argc, char *argv[])
 {
     int server_fd, client_fd;
     struct sockaddr_un address;
-    char buffer[BUF_SIZE];
+    char buffer[BUF_SIZE], totalData[DATA_SIZE] = {0};
     struct timeval start, end;
+    int bytes = 0, countbytes = 0;
 
     // Create server socket
     if ((server_fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1)
@@ -916,15 +932,24 @@ int uds_stream_server(int argc, char *argv[])
         return -1;
     }
 
-    // printf("Server is listening for incoming connections...\n");
-
     // Accept incoming connections
     if ((client_fd = accept(server_fd, NULL, NULL)) == -1)
     {
         printf("Failed to accept incoming connection\n");
         return -1;
     }
-    int bytes = 0, countbytes = 0;
+
+    // Receive checksum
+    unsigned short received_checksum;
+    if ((bytes = recv(client_fd, &received_checksum, sizeof(received_checksum), 0)) < 0)
+    {
+        printf("recv failed. Sender inactive.\n");
+        close(client_fd);
+        close(server_fd);
+        return -1;
+    }
+    received_checksum = ntohs(received_checksum);
+
     gettimeofday(&start, 0);
     while (1)
     {
@@ -940,11 +965,19 @@ int uds_stream_server(int argc, char *argv[])
             // printf("Total bytes received: %d\n", countbytes);
             break;
         }
-
+        memcpy(totalData + countbytes, buffer, bytes);
         countbytes += bytes;
     }
     gettimeofday(&end, 0);
     unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
+
+    // Calculate checksum
+    unsigned short calculated_checksum = calculate_checksum((unsigned short *)totalData, strlen(totalData));
+    if (calculated_checksum != received_checksum)
+    {
+        printf("Checksums don't match\n");
+    }
+
     printf("uds_stream,%lu\n", miliseconds);
     close(client_fd);
     close(server_fd);
@@ -958,21 +991,22 @@ int uds_dgram_client(int argc, char *argv[])
     char buffer[BUF_SIZE] = {0};
     struct timeval start, end;
     char *serverType = "udsd";
+    const char *endMsg = "END";
     send_type_to_server(argc, argv, serverType);
 
-    int send_sock;
-    struct sockaddr_un server_address, client_address;
+    int sock;
+    struct sockaddr_un server_addr, client_address;
     // char send_buffer[BUF_SIZE], recv_buffer[BUF_SIZE];
 
     // Create sending socket
-    if ((send_sock = socket(AF_UNIX, SOCK_DGRAM, 0)) == -1)
+    if ((sock = socket(AF_UNIX, SOCK_DGRAM, 0)) == -1)
     {
         printf("Failed to create sending socket\n");
         return -1;
     }
-    memset(&server_address, 0, sizeof(struct sockaddr_un));
-    server_address.sun_family = AF_UNIX;
-    strncpy(server_address.sun_path, SERVER_SOCKET_PATH, sizeof(server_address.sun_path) - 1);
+    memset(&server_addr, 0, sizeof(struct sockaddr_un));
+    server_addr.sun_family = AF_UNIX;
+    strncpy(server_addr.sun_path, SERVER_SOCKET_PATH, sizeof(server_addr.sun_path) - 1);
     // Create receiving socket
     memset(&client_address, 0, sizeof(struct sockaddr_un));
     client_address.sun_family = AF_UNIX;
@@ -983,12 +1017,23 @@ int uds_dgram_client(int argc, char *argv[])
     // Generate data
     char *data = generate_rand_str(DATA_SIZE);
 
+    // Calculate and send checksum
+    unsigned short checksum = calculate_checksum((unsigned short *)data, strlen(data));
+    unsigned short checksum_net = htons(checksum);
+    memcpy(buffer, &checksum_net, sizeof(checksum_net));
+    sendStream = sendto(sock, buffer, sizeof(checksum_net), 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
+    if (-1 == sendStream)
+    {
+        printf("send() failed");
+        exit(1);
+    }
+
     gettimeofday(&start, 0);
     while (totalSent < strlen(data))
     {
         int bytes_to_read = (BUF_SIZE < strlen(data) - totalSent) ? BUF_SIZE : strlen(data) - totalSent;
         memcpy(buffer, data + totalSent, bytes_to_read);
-        sendStream = sendto(send_sock, buffer, bytes_to_read, 0, (struct sockaddr *)&server_address, sizeof(server_address));
+        sendStream = sendto(sock, buffer, bytes_to_read, 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
         if (-1 == sendStream)
         {
             printf("send() failed");
@@ -1003,13 +1048,12 @@ int uds_dgram_client(int argc, char *argv[])
     }
 
     gettimeofday(&end, 0);
-    const char *endMsg = "FILEEND";
     strcpy(buffer, endMsg);
-    sendto(send_sock, buffer, strlen(buffer), 0, (struct sockaddr *)&server_address, sizeof(server_address));
+    sendto(sock, buffer, strlen(buffer), 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
     unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
     printf("Total bytes sent: %d\nTime elapsed: %lu miliseconds\n", totalSent, miliseconds);
     // Close sockets
-    close(send_sock);
+    close(sock);
     // close(recv_sock);
     unlink(CLIENT_SOCKET_PATH);
     return 0;
@@ -1019,7 +1063,7 @@ int uds_dgram_server(int argc, char *argv[])
     int server_fd;
     struct sockaddr_un server_addr, client_addr;
     int bytes = 0, countbytes = 0;
-    char buffer[BUF_SIZE] = {0}, decoded[BUF_SIZE];
+    char buffer[BUF_SIZE] = {0}, decoded[BUF_SIZE], totalData[DATA_SIZE] = {0};
     struct timeval start, end;
 
     // Create server socket
@@ -1041,6 +1085,18 @@ int uds_dgram_server(int argc, char *argv[])
         return -1;
     }
     socklen_t clientAddressLen;
+
+    // Receive checksum
+    unsigned short received_checksum;
+    bytes = recvfrom(server_fd, &received_checksum, sizeof(received_checksum), 0, (struct sockaddr *)&client_addr, &clientAddressLen);
+    if (bytes < 0)
+    {
+        printf("recv failed. Sender inactive.\n");
+        close(server_fd);
+        return -1;
+    }
+    received_checksum = ntohs(received_checksum);
+
     gettimeofday(&start, 0);
     while (1)
     {
@@ -1056,16 +1112,25 @@ int uds_dgram_server(int argc, char *argv[])
         {
             buffer[bytes] = '\0';
             strncpy(decoded, buffer, sizeof(decoded));
-            if (strcmp(decoded, "FILEEND") == 0)
+            if (strcmp(decoded, "END") == 0)
             {
                 // printf("Total bytes received: %d\n", countbytes);
                 break;
             }
         }
+        memcpy(totalData + countbytes, buffer, bytes);
         countbytes += bytes;
     }
     gettimeofday(&end, 0);
     unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
+
+    // Calculate checksum
+    unsigned short calculated_checksum = calculate_checksum((unsigned short *)totalData, strlen(totalData));
+    if (calculated_checksum != received_checksum)
+    {
+        printf("Checksums don't match\n");
+    }
+
     printf("uds_dgram,%lu\n", miliseconds);
     close(server_fd);
     unlink(SERVER_SOCKET_PATH);
@@ -1088,7 +1153,6 @@ int mmap_client(int argc, char *argv[])
     }
     fprintf(fp, "%s", data);
     fclose(fp);
-    free(data);
 
     int fd = open(argv[6], O_RDONLY);
     if (fd == -1)
@@ -1105,16 +1169,24 @@ int mmap_client(int argc, char *argv[])
     }
     close(fd);
 
-    int shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
+    // Calculate and send checksum
+    unsigned short checksum = calculate_checksum((unsigned short *)data, strlen(data));
+    unsigned short checksum_net = htons(checksum);
+    free(data);
+
+    int shm_fd = shm_open(SHM_FILE, O_CREAT | O_RDWR, 0666);
     int shm_fd_name = shm_open(SHM_FILE_NAME, O_CREAT | O_RDWR, 0666);
-    if (shm_fd == -1 || shm_fd_name == -1)
+    int shm_fd_checksum = shm_open(SHM_FILE_CS, O_CREAT | O_RDWR, 0666);
+    if (shm_fd == -1 || shm_fd_name == -1 || shm_fd_checksum == -1)
     {
         perror("shm_open() failed\n");
         return -1;
     }
+    
     int res = ftruncate(shm_fd, dataLen);
     int res2 = ftruncate(shm_fd_name, strlen(argv[6]));
-    if (res == -1 || res2 == -1)
+    int res3 = ftruncate(shm_fd_checksum, sizeof(checksum_net));
+    if (res == -1 || res2 == -1 || res3 == -1)
     {
         printf("ftruncate() failed\n");
         return -1;
@@ -1122,28 +1194,34 @@ int mmap_client(int argc, char *argv[])
 
     void *shm_addr = mmap(NULL, dataLen, PROT_WRITE, MAP_SHARED, shm_fd, 0);
     void *shm_name_addr = mmap(NULL, strlen(argv[6]), PROT_WRITE, MAP_SHARED, shm_fd_name, 0);
-    if (shm_addr == MAP_FAILED || shm_name_addr == MAP_FAILED)
+    void *shm_checksum_addr = mmap(NULL, sizeof(checksum_net), PROT_WRITE, MAP_SHARED, shm_fd_checksum, 0);
+    if (shm_addr == MAP_FAILED || shm_name_addr == MAP_FAILED || shm_checksum_addr == MAP_FAILED)
     {
         printf("mmap() failed\n");
         return -1;
     }
+    
     memcpy(shm_addr, addr, dataLen);
     memcpy(shm_name_addr, argv[6], strlen(argv[6]));
+    memcpy(shm_checksum_addr, &checksum_net, sizeof(checksum_net));
 
     munmap(addr, dataLen);
     munmap(shm_addr, dataLen);
     munmap(shm_name_addr, strlen(argv[6]));
+    munmap(shm_checksum_addr, sizeof(checksum_net));
     close(shm_fd);
     close(shm_fd_name);
+    close(shm_fd_checksum);
 
     send_type_to_server(argc, argv, ServerType);
     return 0;
 }
 int mmap_server(int argc, char *argv[])
 {
+    // Get SM object of file
     struct timeval start, end;
     gettimeofday(&start, 0);
-    int shm_fd = shm_open(SHM_NAME, O_RDONLY, 0666);
+    int shm_fd = shm_open(SHM_FILE, O_RDONLY, 0666);
     if (shm_fd == -1)
     {
         perror("shm_open() failed\n");
@@ -1155,7 +1233,7 @@ int mmap_server(int argc, char *argv[])
         printf("fstat() failed\n");
         return -1;
     }
-    off_t len = sb.st_size;
+    int len = sb.st_size;
 
     void *addr = mmap(NULL, len, PROT_READ, MAP_SHARED, shm_fd, 0);
     close(shm_fd);
@@ -1164,14 +1242,46 @@ int mmap_server(int argc, char *argv[])
         printf("mmap() failed\n");
         return -1;
     }
-    // fwrite(addr, len, 1, stdout);
-    printf("Shared memory size: %ld\n", len);
+
+    //fwrite(addr, len, 1, stdout);
+    //printf("Shared memory size: %ld\n", len);
+
+    // Get checksum
+    int shm_fd_checksum = shm_open(SHM_FILE_CS, O_RDONLY, 0666);
+    if (shm_fd_checksum == -1)
+    {
+        perror("shm_open() failed\n");
+        return -1;
+    }
+    struct stat sb_checksum;
+    if (fstat(shm_fd_checksum, &sb_checksum) == -1)
+    {
+        printf("fstat() failed\n");
+        return -1;
+    }
+    int len_checksum = sb_checksum.st_size;
+    void *addr_checksum = mmap(NULL, len_checksum, PROT_READ, MAP_SHARED, shm_fd_checksum, 0);
+    if (addr_checksum == MAP_FAILED)
+    {
+        printf("mmap() failed\n");
+        return -1;
+    }
+    close(shm_fd_checksum);
     gettimeofday(&end, 0);
+
+    // Calculate and compare checksums
+    unsigned short calculated_checksum = calculate_checksum((unsigned short *)addr, len);
+    if (calculated_checksum != ntohs(*(unsigned short *)addr_checksum))
+    {
+        printf("Checksums don't match\n");
+    }
+    shm_unlink(SHM_FILE_CS);
+    
     unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
     printf("mmap,%lu\n", miliseconds);
 
     munmap(addr, len);
-    if (shm_unlink(SHM_NAME) == -1)
+    if (shm_unlink(SHM_FILE) == -1)
     {
         printf("shm_unlink() failed\n");
         return -1;
