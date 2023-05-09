@@ -29,10 +29,8 @@ enum addr
     IPV4,
     IPV6
 };
-char *generate_rand_str(int length);
-unsigned short calculate_checksum(unsigned short *paddress, int len);
-int getServer(int argc, char *argv[]);
-int send_type_to_server(int argc, char *argv[], char *type);
+int client(int argc, char *argv[]);
+int server(int argc, char *argv[]);
 int tcp_client(int argc, char *argv[], enum addr type);
 int tcp_server(int argc, char *argv[], enum addr type);
 int udp_client(int argc, char *argv[], enum addr type);
@@ -41,6 +39,12 @@ int uds_stream_client(int argc, char *argv[]);
 int uds_stream_server(int argc, char *argv[]);
 int uds_dgram_client(int argc, char *argv[]);
 int uds_dgram_server(int argc, char *argv[]);
+int mmap_client(int argc, char *argv[]);
+int mmap_server(int argc, char *argv[]);
+int getServer(int argc, char *argv[]);
+int send_type_to_server(int argc, char *argv[], char *type);
+char *generate_rand_str(int length);
+unsigned short calculate_checksum(unsigned short *paddress, int len);
 
 int client(int argc, char *argv[])
 {
@@ -271,7 +275,6 @@ int server(int argc, char *argv[])
     }
     return 0;
 }
-
 int tcp_client(int argc, char *argv[], enum addr type)
 {
     char *serverType;
@@ -390,7 +393,6 @@ int tcp_client(int argc, char *argv[], enum addr type)
     free(data);
     return 0;
 }
-
 int tcp_server(int argc, char *argv[], enum addr type)
 {
     int ServerSocket, ClientSocket;
@@ -520,7 +522,6 @@ int tcp_server(int argc, char *argv[], enum addr type)
     close(ClientSocket);
     return 0;
 }
-
 int udp_client(int argc, char *argv[], enum addr type)
 {
     char *serverType;
@@ -639,7 +640,6 @@ int udp_client(int argc, char *argv[], enum addr type)
     free(data);
     return 0;
 }
-
 int udp_server(int argc, char *argv[], enum addr type)
 {
     struct timeval start, end;
@@ -750,7 +750,6 @@ int udp_server(int argc, char *argv[], enum addr type)
     close(ServerSocket);
     return 0;
 }
-
 int uds_stream_client(int argc, char *argv[])
 {
     char *serverType = "udss";
@@ -1065,10 +1064,10 @@ int mmap_client(int argc, char *argv[])
     send_type_to_server(argc, argv, ServerType);
     return 0;
 }
-
 int mmap_server(int argc, char *argv[])
 {
-
+    struct timeval start, end;
+    gettimeofday(&start, 0);
     int shm_fd = shm_open(SHM_NAME, O_RDONLY, 0666);
     if (shm_fd == -1)
     {
@@ -1092,6 +1091,10 @@ int mmap_server(int argc, char *argv[])
     }
     // fwrite(addr, len, 1, stdout);
     printf("Shared memory size: %ld\n", len);
+    gettimeofday(&end, 0);
+    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
+    printf("mmap,%lu\n", miliseconds);
+
     munmap(addr, len);
     if (shm_unlink(SHM_NAME) == -1)
     {
