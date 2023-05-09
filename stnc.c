@@ -16,14 +16,14 @@
 #include <sys/wait.h>
 #include <errno.h>
 
-#define SHM_NAME "/mySharedMemory"
+#define SHM_NAME "/FileSM"
+#define SHM_FILE_NAME "/FileName"
 #define BUF_SIZE 64000
 // #define DATA_SIZE 104857600
 #define DATA_SIZE 1048576
 #define SOCKET_PATH "/tmp/my_socket.sock"
 #define SERVER_SOCKET_PATH "/tmp/uds_dgram_server"
 #define CLIENT_SOCKET_PATH "/tmp/uds_dgram_client"
-#define FILENAME "file.txt"
 enum addr
 {
     IPV4,
@@ -31,6 +31,7 @@ enum addr
 };
 char *generate_rand_str(int length);
 unsigned short calculate_checksum(unsigned short *paddress, int len);
+int getServer(int argc, char *argv[]);
 int send_type_to_server(int argc, char *argv[], char *type);
 int tcp_client(int argc, char *argv[], enum addr type);
 int tcp_server(int argc, char *argv[], enum addr type);
@@ -270,38 +271,6 @@ int server(int argc, char *argv[])
     }
     return 0;
 }
-int send_type_to_server(int argc, char *argv[], char *type)
-{
-    int sock = 0;
-    struct sockaddr_in serv_addr;
-    char *bufferser = type;
-
-    // Create socket
-    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-    {
-        printf("\n Socket creation error \n");
-        return -1;
-    }
-    // Set server address and port
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(atoi(argv[3]) + 1);
-    // Convert IPv4 and IPv6 addresses from text to binary form
-    if (inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr) <= 0)
-    {
-        printf("\nInvalid address/ Address not supported \n");
-        return -1;
-    }
-    // Connect to server
-    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
-    {
-        perror("\nConnection Failed \n");
-        return -1;
-    }
-    send(sock, bufferser, strlen(bufferser), 0);
-    usleep(5000);
-    close(sock);
-    return 1;
-}
 
 int tcp_client(int argc, char *argv[], enum addr type)
 {
@@ -315,6 +284,7 @@ int tcp_client(int argc, char *argv[], enum addr type)
         serverType = "tcp6";
     }
     send_type_to_server(argc, argv, serverType);
+
     int sock = 0;
     int sendStream = 0, totalSent = 0;
     char buffer[BUF_SIZE] = {0};
@@ -349,7 +319,6 @@ int tcp_client(int argc, char *argv[], enum addr type)
         if (connect(sock, (struct sockaddr *)&serv_addr4, sizeof(serv_addr4)) < 0)
         {
             perror("\nConnection Failed \n");
-            printf("his\n");
             return -1;
         }
     }
@@ -412,20 +381,10 @@ int tcp_client(int argc, char *argv[], enum addr type)
         bzero(buffer, sizeof(buffer));
     }
     gettimeofday(&end, 0);
-    usleep(50000);
+
     send(sock, "finish", sizeof("finish"), 0);
     unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
     printf("Total bytes sent: %d\nTime elapsed: %lu miliseconds\n", totalSent, miliseconds);
-    char str[20];
-    sprintf(str, "%lu", miliseconds);
-    usleep(50000);
-
-    if (send(sock, str, sizeof(str), 0) == -1)
-    {
-        perror("send() failed\n");
-        exit(1);
-    }
-    printf("%s\n", str);
     // Close socket
     close(sock);
     free(data);
@@ -440,9 +399,9 @@ int tcp_server(int argc, char *argv[], enum addr type)
     socklen_t clientAddressLen;
     int opt = 1, bytes = 0, countbytes = 0;
     char buffer[BUF_SIZE] = {0};
-    enum addr addrType = (type == 0) ? IPV4 : IPV6;
+    struct timeval start, end;
 
-    if (addrType == IPV4)
+    if (type == IPV4)
     {
         // Create server socket
         if ((ServerSocket = socket(AF_INET, SOCK_STREAM, 0)) == -1)
@@ -466,7 +425,7 @@ int tcp_server(int argc, char *argv[], enum addr type)
             return -1;
         }
     }
-    else if (addrType == IPV6)
+    else if (type == IPV6)
     {
         // Create server socket
         if ((ServerSocket = socket(AF_INET6, SOCK_STREAM, 0)) == -1)
@@ -511,7 +470,7 @@ int tcp_server(int argc, char *argv[], enum addr type)
         printf("\nSetsockopt error \n");
         return -1;
     }
-    if (addrType == IPV4)
+    if (type == IPV4)
     {
         if ((ClientSocket = accept(ServerSocket, (struct sockaddr *)&clientAddr, &clientAddressLen)) < 0)
         {
@@ -519,7 +478,7 @@ int tcp_server(int argc, char *argv[], enum addr type)
             return -1;
         }
     }
-    else if (addrType == IPV6)
+    else if (type == IPV6)
     {
         if ((ClientSocket = accept(ServerSocket, (struct sockaddr *)&clientAddr6, &clientAddressLen)) < 0)
         {
@@ -528,8 +487,8 @@ int tcp_server(int argc, char *argv[], enum addr type)
         }
     }
 
-    // printf("Client connected\n");
-
+    printf("Client connected\n");
+    gettimeofday(&start, 0);
     while (1)
     {
         if ((bytes = recv(ClientSocket, buffer, sizeof(buffer), 0)) < 0)
@@ -546,15 +505,15 @@ int tcp_server(int argc, char *argv[], enum addr type)
         }
         countbytes += bytes;
     }
-    char buffertime[20];
-    recv(ClientSocket, buffertime, sizeof(buffertime), 0);
+    gettimeofday(&end, 0);
+    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
     if (type == IPV4)
     {
-        printf("ipv4_tcp,%s\n", buffertime);
+        printf("ipv4_tcp,%lu\n", miliseconds);
     }
     else
     {
-        printf("ipv6_tcp,%s\n", buffertime);
+        printf("ipv6_tcp,%lu\n", miliseconds);
     }
     // Close server socket
     close(ServerSocket);
@@ -674,19 +633,7 @@ int udp_client(int argc, char *argv[], enum addr type)
 
     unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
     printf("Total bytes sent: %d\nTime elapsed: %lu miliseconds\n", totalSent, miliseconds);
-    char str[20];
-    sprintf(str, "%lu", miliseconds);
-    usleep(50000);
 
-    if (type == IPV4)
-    {
-        sendto(sock, str, strlen(str), 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
-    }
-    else if (type == IPV6)
-    {
-        sendto(sock, str, strlen(str), 0, (struct sockaddr *)&serv_addr6, sizeof(serv_addr6));
-    }
-    printf("%s\n", str);
     // Close socket
     close(sock);
     free(data);
@@ -809,10 +756,11 @@ int uds_stream_client(int argc, char *argv[])
     char *serverType = "udss";
     send_type_to_server(argc, argv, serverType);
     int sock = 0;
-    int valread = -1;
+    int valread = -1, sendStream = 0, totalSent = 0;
     valread++;
     struct sockaddr_un server_address;
     char buffer[BUF_SIZE];
+    struct timeval start, end;
 
     // Create socket
     if ((sock = socket(AF_UNIX, SOCK_STREAM, 0)) == -1)
@@ -831,20 +779,16 @@ int uds_stream_client(int argc, char *argv[])
     }
 
     printf("Connected to server\n");
-    struct timeval start, end;
-    FILE *fp = fopen(FILENAME, "rb");
-    if (fp == NULL)
-    {
-        printf("fopen() failed\n");
-        exit(1);
-    }
-    int dataStream = -1, sendStream = 0, totalSent = 0;
-    printf("Connected to server\n");
-    gettimeofday(&start, 0);
-    while ((dataStream = fread(buffer, sizeof(char), sizeof(buffer), fp)) > 0)
-    {
 
-        sendStream = send(sock, buffer, dataStream, 0);
+    // Generate data
+    char *data = generate_rand_str(DATA_SIZE);
+
+    gettimeofday(&start, 0);
+    while (totalSent < strlen(data))
+    {
+        int bytes_to_read = (BUF_SIZE < strlen(data) - totalSent) ? BUF_SIZE : strlen(data) - totalSent;
+        memcpy(buffer, data + totalSent, bytes_to_read);
+        sendStream = send(sock, buffer, bytes_to_read, 0);
         if (-1 == sendStream)
         {
             printf("send() failed");
@@ -852,6 +796,8 @@ int uds_stream_client(int argc, char *argv[])
         }
 
         totalSent += sendStream;
+        // printf("Bytes sent: %d\n", totalSent);
+        // printf ("bytes to read: %d\n", bytes_to_read);
         sendStream = 0;
         bzero(buffer, sizeof(buffer));
     }
@@ -861,6 +807,7 @@ int uds_stream_client(int argc, char *argv[])
 
     // Close socket
     close(sock);
+    free(data);
     return 0;
 }
 int uds_stream_server(int argc, char *argv[])
@@ -932,8 +879,8 @@ int uds_stream_server(int argc, char *argv[])
 }
 int uds_dgram_client(int argc, char *argv[])
 {
-    FILE *fp;
-    int dataGram = -1, sendStream = 0, totalSent = 0;
+
+    int sendStream = 0, totalSent = 0;
     char buffer[BUF_SIZE] = {0};
     struct timeval start, end;
     char *serverType = "udsd";
@@ -958,24 +905,25 @@ int uds_dgram_client(int argc, char *argv[])
     strncpy(client_address.sun_path, CLIENT_SOCKET_PATH, sizeof(client_address.sun_path) - 1);
     remove(client_address.sun_path);
     printf("Client started\n");
-    fp = fopen(FILENAME, "rb");
-    if (fp == NULL)
-    {
-        printf("fopen() failed\n");
-        exit(1);
-    }
+
+    // Generate data
+    char *data = generate_rand_str(DATA_SIZE);
+
     gettimeofday(&start, 0);
-    while ((dataGram = fread(buffer, sizeof(char), sizeof(buffer), fp)) > 0)
+    while (totalSent < strlen(data))
     {
-        sendStream = sendto(send_sock, buffer, dataGram, 0, (struct sockaddr *)&server_address, sizeof(server_address));
+        int bytes_to_read = (BUF_SIZE < strlen(data) - totalSent) ? BUF_SIZE : strlen(data) - totalSent;
+        memcpy(buffer, data + totalSent, bytes_to_read);
+        sendStream = sendto(send_sock, buffer, bytes_to_read, 0, (struct sockaddr *)&server_address, sizeof(server_address));
         if (-1 == sendStream)
         {
-            perror("send() failed");
+            printf("send() failed");
             exit(1);
         }
+
         totalSent += sendStream;
-        // printf("Bytes sent: %f\n", totalSent);
-        // printf("location in file %ld\n", ftell(fp));
+        // printf("Bytes sent: %d\n", totalSent);
+        // printf ("bytes to read: %d\n", bytes_to_read);
         sendStream = 0;
         bzero(buffer, sizeof(buffer));
     }
@@ -1052,35 +1000,22 @@ int uds_dgram_server(int argc, char *argv[])
 }
 int mmap_client(int argc, char *argv[])
 {
-    int sock = 0;
-    struct sockaddr_in serv_addr;
-    char *bufferser;
-    bufferser = "mmap";
-    // Create socket
-    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-    {
-        printf("\n Socket creation error \n");
-        return -1;
-    }
-    // Set server address and port
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(atoi(argv[3]) + 1);
-    // Convert IPv4 and IPv6 addresses from text to binary form
-    if (inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr) <= 0)
-    {
-        printf("\nInvalid address/ Address not supported \n");
-        return -1;
-    }
-    // Connect to server
-    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
-    {
-        printf("\nConnection Failed \n");
-        return -1;
-    }
-    send(sock, bufferser, strlen(bufferser), 0);
-    usleep(50000);
+    char *ServerType = "mmap";
 
-    printf("%s\n", (argv[6]));
+    // Generate file
+    char *data = generate_rand_str(DATA_SIZE);
+    int dataLen = strlen(data);
+
+    FILE *fp = fopen(argv[6], "w");
+    if (fp == NULL)
+    {
+        printf("Error opening file!\n");
+        return -1;
+    }
+    fprintf(fp, "%s", data);
+    fclose(fp);
+    free(data);
+
     int fd = open(argv[6], O_RDONLY);
     if (fd == -1)
     {
@@ -1088,41 +1023,46 @@ int mmap_client(int argc, char *argv[])
         return -1;
     }
 
-    struct stat sb;
-    if (fstat(fd, &sb) == -1)
-    {
-        printf("fstat() failed\n");
-        return -1;
-    }
-    off_t len = sb.st_size;
-    void *addr = mmap(NULL, len, PROT_READ, MAP_PRIVATE, fd, 0);
+    void *addr = mmap(NULL, dataLen, PROT_READ, MAP_PRIVATE, fd, 0);
     if (addr == MAP_FAILED)
     {
         printf("mmap() failed\n");
         return -1;
     }
     close(fd);
+
     int shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
-    if (shm_fd == -1)
+    int shm_fd_name = shm_open(SHM_FILE_NAME, O_CREAT | O_RDWR, 0666);
+    if (shm_fd == -1 || shm_fd_name == -1)
     {
         perror("shm_open() failed\n");
         return -1;
     }
-    if (ftruncate(shm_fd, len) == -1)
+    int res = ftruncate(shm_fd, dataLen);
+    int res2 = ftruncate(shm_fd_name, strlen(argv[6]));
+    if (res == -1 || res2 == -1)
     {
         printf("ftruncate() failed\n");
         return -1;
     }
-    void *shm_addr = mmap(NULL, len, PROT_WRITE, MAP_SHARED, shm_fd, 0);
-    if (shm_addr == MAP_FAILED)
+
+    void *shm_addr = mmap(NULL, dataLen, PROT_WRITE, MAP_SHARED, shm_fd, 0);
+    void *shm_name_addr = mmap(NULL, strlen(argv[6]), PROT_WRITE, MAP_SHARED, shm_fd_name, 0);
+    if (shm_addr == MAP_FAILED || shm_name_addr == MAP_FAILED)
     {
         printf("mmap() failed\n");
         return -1;
     }
-    memcpy(shm_addr, addr, len);
-    munmap(addr, len);
-    munmap(shm_addr, len);
+    memcpy(shm_addr, addr, dataLen);
+    memcpy(shm_name_addr, argv[6], strlen(argv[6]));
+
+    munmap(addr, dataLen);
+    munmap(shm_addr, dataLen);
+    munmap(shm_name_addr, strlen(argv[6]));
     close(shm_fd);
+    close(shm_fd_name);
+
+    send_type_to_server(argc, argv, ServerType);
     return 0;
 }
 
@@ -1153,9 +1093,82 @@ int mmap_server(int argc, char *argv[])
     // fwrite(addr, len, 1, stdout);
     printf("Shared memory size: %ld\n", len);
     munmap(addr, len);
-    shm_unlink(SHM_NAME);
+    if (shm_unlink(SHM_NAME) == -1)
+    {
+        printf("shm_unlink() failed\n");
+        return -1;
+    }
+
+    // Get file name and remove it
+    int shm_fd_name = shm_open(SHM_FILE_NAME, O_RDONLY, 0666);
+    if (shm_fd_name == -1)
+    {
+        perror("shm_open() failed\n");
+        return -1;
+    }
+    struct stat sb_name;
+    if (fstat(shm_fd_name, &sb_name) == -1)
+    {
+        printf("fstat() failed\n");
+        return -1;
+    }
+    off_t len_name = sb_name.st_size;
+    void *addr_name = mmap(NULL, len_name, PROT_READ, MAP_SHARED, shm_fd_name, 0);
+    if (addr_name == MAP_FAILED)
+    {
+        printf("mmap() failed\n");
+        return -1;
+    }
+    close(shm_fd_name);
+
+    int status = remove((char *)addr_name);
+    if (status != 0)
+    {
+        printf("Unable to delete the file\n");
+    }
+
+    munmap(addr_name, len_name);
+    if (shm_unlink(SHM_FILE_NAME) == -1)
+    {
+        printf("shm_unlink() failed\n");
+        return -1;
+    }
+
     return 0;
 }
+
+int send_type_to_server(int argc, char *argv[], char *type)
+{
+    int sock = 0;
+    struct sockaddr_in serv_addr;
+    char *bufferser = type;
+
+    // Create socket
+    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+    {
+        printf("\n Socket creation error \n");
+        return -1;
+    }
+    // Set server address and port
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(atoi(argv[3]) + 1);
+    // Convert IPv4 and IPv6 addresses from text to binary form
+    if (inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr) <= 0)
+    {
+        printf("\nInvalid address/ Address not supported \n");
+        return -1;
+    }
+    // Connect to server
+    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
+    {
+        perror("\nConnection Failed \n");
+        return -1;
+    }
+    send(sock, bufferser, strlen(bufferser), 0);
+    close(sock);
+    return 0;
+}
+
 int getServer(int argc, char *argv[])
 {
     int server_fd, new_socket, valread = -1;
@@ -1206,6 +1219,10 @@ int getServer(int argc, char *argv[])
     memset(buffer, 0, 100);
     valread = read(new_socket, buffer, 100);
     // printf("Client: %s\n", buffer);
+    close(server_fd);
+    close(new_socket);
+    fflush(stdout);
+
     if (strcmp(buffer, "tcp4") == 0)
     {
         tcp_server(argc, argv, IPV4);
@@ -1234,14 +1251,13 @@ int getServer(int argc, char *argv[])
     {
         mmap_server(argc, argv);
     }
-    close(server_fd);
-    close(new_socket);
     return 0;
 }
+
 int main(int argc, char *argv[])
 {
 
-    if (argc < 3 || argc > 7)
+    if (argc < 3 || argc > 7 || (argc == 5 && !strcmp(argv[1], "-c")))
     {
         puts("Incorrect number of arguments\n");
         printf("Server Usage: ...\n");
