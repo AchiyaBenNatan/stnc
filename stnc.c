@@ -20,7 +20,7 @@
 #define SHM_FILE_NAME "/FileName"
 #define SHM_FILE_CS "/FileCS"
 #define BUF_SIZE 64000
-// #define DATA_SIZE 104857600
+#define FIFO_NAME "/tmp/myfifo"
 #define DATA_SIZE 100000000
 #define SOCKET_PATH "/tmp/my_socket.sock"
 #define SERVER_SOCKET_PATH "/tmp/uds_dgram_server"
@@ -1338,6 +1338,75 @@ int mmap_server(int argc, char *argv[])
     return 0;
 }
 
+int pipe_client(int argc, char *argv[])
+{
+    send_type_to_server(argc,argv,"pipe");
+    int fifo_fd;
+    char buf[BUF_SIZE];
+    int bytes_read;
+    // Open the FIFO for writing
+    fifo_fd = open(FIFO_NAME, O_WRONLY);
+    if (fifo_fd < 0)
+    {
+        perror("Error: Could not open FIFO\n");
+        exit(1);
+    }
+    char *data = generate_rand_str(DATA_SIZE);
+    FILE *fpw = fopen(argv[6], "w");
+    if (fpw == NULL)
+    {
+        printf("Error opening file!\n");
+        return -1;
+    }
+    fprintf(fpw, "%s", data);
+    fclose(fpw);
+    FILE *fp = fopen(argv[6], "r");
+    if (fp == NULL)
+    {
+        printf("Error opening file!\n");
+        return -1;
+    }
+    while ((bytes_read = fread(buf, 1, BUF_SIZE, fp)) > 0)
+    {
+        if (write(fifo_fd, buf, bytes_read) < 0)
+        {
+            fprintf(stderr, "Error: Could not write to FIFO\n");
+            exit(1);
+        }
+    }
+    if (remove(argv[6]) != 0)
+    {
+        printf("File %s was not deleted.\n", argv[6]);
+    }
+    close(fifo_fd);
+    fclose(fp);
+    return 0;
+}
+
+int pipe_server(int argc, char *argv[])
+{
+    int fifo_fd;
+    char buf[BUF_SIZE];
+    struct timeval start, end;
+    mkfifo(FIFO_NAME, 0666);
+    fifo_fd = open(FIFO_NAME, O_RDONLY);
+    if (fifo_fd < 0)
+    {
+        fprintf(stderr, "Error: Could not open FIFO\n");
+        exit(1);
+    }
+    int bytes_read = 0;
+    gettimeofday(&start, 0);
+    while ((bytes_read = read(fifo_fd, buf, BUF_SIZE)) > 0)
+    {}
+    gettimeofday(&end, 0);
+    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + (end.tv_usec - start.tv_usec) / 1000;
+    printf("pipe,%lu\n",miliseconds);
+    close(fifo_fd);
+    unlink(FIFO_NAME);
+    return 0;
+}
+
 int send_type_to_server(int argc, char *argv[], char *type)
 {
     int sock = 0;
@@ -1499,6 +1568,7 @@ int main(int argc, char *argv[])
             }
             else if (!strcmp(argv[5], "pipe"))
             {
+                pipe_client(argc, argv);
             }
         }
     }
@@ -1535,6 +1605,10 @@ int main(int argc, char *argv[])
             else if (strcmp(serverType, "mmap") == 0)
             {
                 mmap_server(argc, argv);
+            }
+            else if (strcmp(serverType, "pipe") == 0)
+            {
+                pipe_server(argc, argv);
             }
             free(serverType);
         }
