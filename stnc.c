@@ -21,7 +21,6 @@
 #define SHM_FILE_CS "/FileCS"
 #define BUF_SIZE 64000
 #define DATA_SIZE 104857600
-// #define DATA_SIZE 1048576
 #define SOCKET_PATH "/tmp/my_socket.sock"
 #define SERVER_SOCKET_PATH "/tmp/uds_dgram_server"
 #define CLIENT_SOCKET_PATH "/tmp/uds_dgram_client"
@@ -30,21 +29,6 @@ enum addr
     IPV4,
     IPV6
 };
-
-// main functions
-// int client(int argc, char *argv[]);
-// int server(int argc, char *argv[]);
-// int tcp_client(int argc, char *argv[], enum addr type);
-// int tcp_server(int argc, char *argv[], enum addr type);
-// int udp_client(int argc, char *argv[], enum addr type);
-// int udp_server(int argc, char *argv[], enum addr type);
-// int uds_stream_client(int argc, char *argv[]);
-// int uds_stream_server(int argc, char *argv[]);
-// int uds_dgram_client(int argc, char *argv[]);
-// int uds_dgram_server(int argc, char *argv[]);
-// int mmap_client(int argc, char *argv[]);
-// int mmap_server(int argc, char *argv[]);
-
 // support functions
 char *getServerType(int argc, char *argv[]);
 int send_type_to_server(int argc, char *argv[], char *type);
@@ -1244,8 +1228,8 @@ int mmap_server(int argc, char *argv[])
         printf("mmap() failed\n");
         return -1;
     }
-
-    //fwrite(addr, len, 1, stdout);
+    
+    //fwrite(addr, len, 1,stderr);
     //printf("Shared memory size: %ld\n", len);
 
     // Get checksum
@@ -1269,7 +1253,7 @@ int mmap_server(int argc, char *argv[])
         return -1;
     }
     close(shm_fd_checksum);
-    gettimeofday(&end, 0);
+    
 
     // Calculate and compare checksums
     unsigned short calculated_checksum = calculate_checksum((unsigned short *)addr, len);
@@ -1278,11 +1262,10 @@ int mmap_server(int argc, char *argv[])
         //printf("Checksums don't match\n");
     }
     shm_unlink(SHM_FILE_CS);
-
+    munmap(addr, len);
+    gettimeofday(&end, 0);
     unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + (end.tv_usec - start.tv_usec) / 1000;
     printf("mmap,%lu\n", miliseconds);
-
-    munmap(addr, len);
     if (shm_unlink(SHM_FILE) == -1)
     {
         printf("shm_unlink() failed\n");
@@ -1328,6 +1311,7 @@ int mmap_server(int argc, char *argv[])
 }
 int pipe_client(int argc, char *argv[])
 {
+    send_type_to_server(argc,argv,"pipe");
     char *fifo_name = "/tmp/myfifo";
     int fifo_fd;
     char buf[BUF_SIZE];
@@ -1340,16 +1324,22 @@ int pipe_client(int argc, char *argv[])
         perror("Error: Could not open FIFO\n");
         exit(1);
     }
-
-    // Read data from the input file and write to the FIFO
-    FILE *file = fopen(argv[6], "r");
-    if (file == NULL)
+    char *data = generate_rand_str(DATA_SIZE);
+    FILE *fpw = fopen(argv[6], "w");
+    if (fpw == NULL)
     {
-        fprintf(stderr, "Error: Could not open file\n");
-        exit(1);
+        printf("Error opening file!\n");
+        return -1;
     }
-
-    while ((bytes_read = fread(buf, 1, BUF_SIZE, file)) > 0)
+    fprintf(fpw, "%s", data);
+    fclose(fpw);
+    FILE *fp = fopen(argv[6], "r");
+    if (fp == NULL)
+    {
+        printf("Error opening file!\n");
+        return -1;
+    }
+    while ((bytes_read = fread(buf, 1, BUF_SIZE, fp)) > 0)
     {
         if (write(fifo_fd, buf, bytes_read) < 0)
         {
@@ -1357,11 +1347,12 @@ int pipe_client(int argc, char *argv[])
             exit(1);
         }
     }
-
-    // Clean up
+    if (remove(argv[6]) != 0)
+    {
+        printf("File %s was not deleted.\n", argv[6]);
+    }
     close(fifo_fd);
-    fclose(file);
-
+    fclose(fp);
     return 0;
 }
 int pipe_server(int argc, char *argv[])
@@ -1369,33 +1360,23 @@ int pipe_server(int argc, char *argv[])
     char *fifo_name = "/tmp/myfifo";
     int fifo_fd;
     char buf[BUF_SIZE];
-
-    // Create the FIFO
+    struct timeval start, end;
     mkfifo(fifo_name, 0666);
-
-    // Open the FIFO for reading
     fifo_fd = open(fifo_name, O_RDONLY);
     if (fifo_fd < 0)
     {
         fprintf(stderr, "Error: Could not open FIFO\n");
         exit(1);
     }
-
-    // Read data from the FIFO and write to stdout
     int bytes_read = 0;
+    gettimeofday(&start, 0);
     while ((bytes_read = read(fifo_fd, buf, BUF_SIZE)) > 0)
-    {
-        if (write(STDOUT_FILENO, buf, bytes_read) < 0)
-        {
-            fprintf(stderr, "Error: Could not write to stdout\n");
-            exit(1);
-        }
-    }
-
-    // Clean up
+    {}
+    gettimeofday(&end, 0);
+    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + (end.tv_usec - start.tv_usec) / 1000;
+    printf("pipe,%lu\n",miliseconds);
     close(fifo_fd);
     unlink(fifo_name);
-
     return 0;
 }
 int send_type_to_server(int argc, char *argv[], char *type)
@@ -1504,13 +1485,13 @@ char *getServerType(int argc, char *argv[])
 int main(int argc, char *argv[])
 {
 
-    // if (argc < 3 || argc > 7 || (argc == 5 && !strcmp(argv[1], "-c")))
-    // {
-    //     puts("Incorrect number of arguments\n");
-    //     printf("Server Usage: ...\n");
-    //     printf("Client Usage: ...\n");
-    //     return -1;
-    // }
+    if (argc < 3 || argc > 7 || (argc == 5 && !strcmp(argv[1], "-c")))
+    {
+        puts("Incorrect number of arguments\n");
+        printf("Server Usage: ...\n");
+        printf("Client Usage: ...\n");
+        return -1;
+    }
 
     if (!strcmp(argv[1], "-c"))
     {
