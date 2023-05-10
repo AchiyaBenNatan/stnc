@@ -399,7 +399,7 @@ int tcp_client(int argc, char *argv[], enum addr type)
         bzero(buffer, sizeof(buffer));
     }
     gettimeofday(&end, 0);
-    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
+    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + (end.tv_usec - start.tv_usec) / 1000;
     printf("Total bytes sent: %d\nTime elapsed: %lu miliseconds\n", totalSent, miliseconds);
     // Close socket
     close(sock);
@@ -686,7 +686,7 @@ int udp_client(int argc, char *argv[], enum addr type)
         sendto(sock, buffer, strlen(buffer), 0, (struct sockaddr *)&serv_addr6, sizeof(serv_addr6));
     }
 
-    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
+    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + (end.tv_usec - start.tv_usec) / 1000;
     printf("Total bytes sent: %d\nTime elapsed: %lu miliseconds\n", totalSent, miliseconds);
 
     // Close socket
@@ -812,7 +812,7 @@ int udp_server(int argc, char *argv[], enum addr type)
         countbytes += bytes;
     }
     gettimeofday(&end, 0);
-    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
+    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + (end.tv_usec - start.tv_usec) / 1000;
     // Calculate checksum
     unsigned short calculated_checksum = calculate_checksum((unsigned short *)totalData, strlen(totalData));
     if (calculated_checksum != received_checksum)
@@ -893,7 +893,7 @@ int uds_stream_client(int argc, char *argv[])
         bzero(buffer, sizeof(buffer));
     }
     gettimeofday(&end, 0);
-    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
+    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + (end.tv_usec - start.tv_usec) / 1000;
     printf("Total bytes sent: %d\nTime elapsed: %lu miliseconds\n", totalSent, miliseconds);
 
     // Close socket
@@ -971,7 +971,7 @@ int uds_stream_server(int argc, char *argv[])
         countbytes += bytes;
     }
     gettimeofday(&end, 0);
-    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
+    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + (end.tv_usec - start.tv_usec) / 1000;
 
     // Calculate checksum
     unsigned short calculated_checksum = calculate_checksum((unsigned short *)totalData, strlen(totalData));
@@ -1053,7 +1053,7 @@ int uds_dgram_client(int argc, char *argv[])
     gettimeofday(&end, 0);
     strcpy(buffer, endMsg);
     sendto(sock, buffer, strlen(buffer), 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
-    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
+    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + (end.tv_usec - start.tv_usec) / 1000;
     printf("Total bytes sent: %d\nTime elapsed: %lu miliseconds\n", totalSent, miliseconds);
     // Close sockets
     close(sock);
@@ -1125,7 +1125,7 @@ int uds_dgram_server(int argc, char *argv[])
         countbytes += bytes;
     }
     gettimeofday(&end, 0);
-    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
+    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + (end.tv_usec - start.tv_usec) / 1000;
 
     // Calculate checksum
     unsigned short calculated_checksum = calculate_checksum((unsigned short *)totalData, strlen(totalData));
@@ -1281,7 +1281,7 @@ int mmap_server(int argc, char *argv[])
     }
     shm_unlink(SHM_FILE_CS);
     
-    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
+    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + (end.tv_usec - start.tv_usec) / 1000;
     printf("mmap,%lu\n", miliseconds);
 
     munmap(addr, len);
