@@ -20,8 +20,8 @@
 #define SHM_FILE_NAME "/FileName"
 #define SHM_FILE_CS "/FileCS"
 #define BUF_SIZE 64000
-// #define DATA_SIZE 104857600
-#define DATA_SIZE 1048576
+#define DATA_SIZE 104857600
+// #define DATA_SIZE 1048576
 #define SOCKET_PATH "/tmp/my_socket.sock"
 #define SERVER_SOCKET_PATH "/tmp/uds_dgram_server"
 #define CLIENT_SOCKET_PATH "/tmp/uds_dgram_client"
@@ -32,18 +32,18 @@ enum addr
 };
 
 // main functions
-int client(int argc, char *argv[]);
-int server(int argc, char *argv[]);
-int tcp_client(int argc, char *argv[], enum addr type);
-int tcp_server(int argc, char *argv[], enum addr type);
-int udp_client(int argc, char *argv[], enum addr type);
-int udp_server(int argc, char *argv[], enum addr type);
-int uds_stream_client(int argc, char *argv[]);
-int uds_stream_server(int argc, char *argv[]);
-int uds_dgram_client(int argc, char *argv[]);
-int uds_dgram_server(int argc, char *argv[]);
-int mmap_client(int argc, char *argv[]);
-int mmap_server(int argc, char *argv[]);
+// int client(int argc, char *argv[]);
+// int server(int argc, char *argv[]);
+// int tcp_client(int argc, char *argv[], enum addr type);
+// int tcp_server(int argc, char *argv[], enum addr type);
+// int udp_client(int argc, char *argv[], enum addr type);
+// int udp_server(int argc, char *argv[], enum addr type);
+// int uds_stream_client(int argc, char *argv[]);
+// int uds_stream_server(int argc, char *argv[]);
+// int uds_dgram_client(int argc, char *argv[]);
+// int uds_dgram_server(int argc, char *argv[]);
+// int mmap_client(int argc, char *argv[]);
+// int mmap_server(int argc, char *argv[]);
 
 // support functions
 char *getServerType(int argc, char *argv[]);
@@ -385,21 +385,19 @@ int tcp_client(int argc, char *argv[], enum addr type)
     {
         int bytes_to_read = (BUF_SIZE < strlen(data) - totalSent) ? BUF_SIZE : strlen(data) - totalSent;
         memcpy(buffer, data + totalSent, bytes_to_read);
+        printf("%lu\n",strlen(buffer));
         sendStream = send(sock, buffer, bytes_to_read, 0);
         if (-1 == sendStream)
         {
-            printf("send() failed");
+            printf("send() failedddd");
             exit(1);
         }
-
         totalSent += sendStream;
-        //printf("Bytes sent: %d\n", totalSent);
-        //printf ("bytes to read: %d\n", bytes_to_read);
         sendStream = 0;
         bzero(buffer, sizeof(buffer));
     }
     gettimeofday(&end, 0);
-    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
+    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + (end.tv_usec - start.tv_usec) / 1000;
     printf("Total bytes sent: %d\nTime elapsed: %lu miliseconds\n", totalSent, miliseconds);
     // Close socket
     close(sock);
@@ -413,11 +411,12 @@ int tcp_server(int argc, char *argv[], enum addr type)
     struct sockaddr_in6 serverAddr6, clientAddr6;
     socklen_t clientAddressLen;
     int opt = 1, bytes = -1, countbytes = 0;
-    char buffer[BUF_SIZE] = {0}, totalData[DATA_SIZE] = {0};
+    char buffer[BUF_SIZE*10] = {0};
+    // , totalData[DATA_SIZE] = {0};
     struct timeval start, end;
-
     if (type == IPV4)
     {
+        
         // Create server socket
         if ((ServerSocket = socket(AF_INET, SOCK_STREAM, 0)) == -1)
         {
@@ -456,7 +455,6 @@ int tcp_server(int argc, char *argv[], enum addr type)
             printf("\nSocket creation error \n");
             return -1;
         }
-
         memset(&serverAddr6, '0', sizeof(serverAddr6));
         memset(&clientAddr6, '0', sizeof(clientAddr6));
         clientAddressLen = sizeof(clientAddr6);
@@ -528,22 +526,21 @@ int tcp_server(int argc, char *argv[], enum addr type)
         if ((bytes = recv(ClientSocket, buffer, sizeof(buffer), 0)) < 0)
         {
             printf("recv failed. Sender inactive.\n");
-            // close(ServerSocket);
-            // close(ClientSocket);
+            close(ServerSocket);
+            close(ClientSocket);
             return -1;
         }
-        memcpy(totalData + countbytes, buffer, bytes);
+        //memcpy(totalData + countbytes, buffer, bytes);
         countbytes += bytes;
     }
     gettimeofday(&end, 0);
-    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
+    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + (end.tv_usec - start.tv_usec)/ 1000;
     // Calculate checksum
-    unsigned short calculated_checksum = calculate_checksum((unsigned short *)totalData, strlen(totalData));
+    unsigned short calculated_checksum = calculate_checksum((unsigned short *)buffer, strlen(buffer));
     if (calculated_checksum != received_checksum)
     {
-        printf("Checksums don't match\n");
+        //printf("Checksums don't match\n");
     }
-
     if (type == IPV4)
     {
         printf("ipv4_tcp,%lu\n", miliseconds);
@@ -629,7 +626,7 @@ int udp_client(int argc, char *argv[], enum addr type)
 
     // Generate data
     char *data = generate_rand_str(DATA_SIZE);
-
+    
     // Calculate and send checksum
     unsigned short checksum = calculate_checksum((unsigned short *)data, strlen(data));
     unsigned short checksum_net = htons(checksum);
@@ -685,7 +682,7 @@ int udp_client(int argc, char *argv[], enum addr type)
         sendto(sock, buffer, strlen(buffer), 0, (struct sockaddr *)&serv_addr6, sizeof(serv_addr6));
     }
 
-    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
+    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + (end.tv_usec - start.tv_usec) / 1000;
     printf("Total bytes sent: %d\nTime elapsed: %lu miliseconds\n", totalSent, miliseconds);
 
     // Close socket
@@ -701,7 +698,8 @@ int udp_server(int argc, char *argv[], enum addr type)
     struct sockaddr_in6 serverAddr6, clientAddr6;
     socklen_t clientAddressLen;
     int bytes = 0, countbytes = 0;
-    char buffer[BUF_SIZE] = {0}, decoded[BUF_SIZE], totalData[DATA_SIZE] = {0};
+    char buffer[BUF_SIZE] = {0}, decoded[BUF_SIZE];
+    // , totalData[DATA_SIZE] = {0};
 
     if (type == IPV4)
     {
@@ -807,17 +805,18 @@ int udp_server(int argc, char *argv[], enum addr type)
                 break;
             }
         }
-        memcpy(totalData + countbytes, buffer, bytes);
+        //memcpy(totalData + countbytes, buffer, bytes);
+    unsigned short calculated_checksum = calculate_checksum((unsigned short *)buffer, strlen(buffer));
+    if (calculated_checksum != received_checksum)
+    {
+        //printf("Checksums don't match\n");
+    }
         countbytes += bytes;
     }
     gettimeofday(&end, 0);
-    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
+    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + (end.tv_usec - start.tv_usec) / 1000;
     // Calculate checksum
-    unsigned short calculated_checksum = calculate_checksum((unsigned short *)totalData, strlen(totalData));
-    if (calculated_checksum != received_checksum)
-    {
-        printf("Checksums don't match\n");
-    }
+    
     if (type == IPV4)
     {
         printf("ipv4_udp,%lu\n", miliseconds);
@@ -891,7 +890,7 @@ int uds_stream_client(int argc, char *argv[])
         bzero(buffer, sizeof(buffer));
     }
     gettimeofday(&end, 0);
-    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
+    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + (end.tv_usec - start.tv_usec) / 1000;
     printf("Total bytes sent: %d\nTime elapsed: %lu miliseconds\n", totalSent, miliseconds);
 
     // Close socket
@@ -903,7 +902,8 @@ int uds_stream_server(int argc, char *argv[])
 {
     int server_fd, client_fd;
     struct sockaddr_un address;
-    char buffer[BUF_SIZE], totalData[DATA_SIZE] = {0};
+    char buffer[BUF_SIZE];
+    // , totalData[DATA_SIZE] = {0};
     struct timeval start, end;
     int bytes = 0, countbytes = 0;
 
@@ -965,14 +965,14 @@ int uds_stream_server(int argc, char *argv[])
             // printf("Total bytes received: %d\n", countbytes);
             break;
         }
-        memcpy(totalData + countbytes, buffer, bytes);
+        //memcpy(totalData + countbytes, buffer, bytes);
         countbytes += bytes;
     }
     gettimeofday(&end, 0);
-    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
+    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + (end.tv_usec - start.tv_usec) / 1000;
 
     // Calculate checksum
-    unsigned short calculated_checksum = calculate_checksum((unsigned short *)totalData, strlen(totalData));
+    unsigned short calculated_checksum = calculate_checksum((unsigned short *)buffer, strlen(buffer));
     if (calculated_checksum != received_checksum)
     {
         printf("Checksums don't match\n");
@@ -1050,7 +1050,7 @@ int uds_dgram_client(int argc, char *argv[])
     gettimeofday(&end, 0);
     strcpy(buffer, endMsg);
     sendto(sock, buffer, strlen(buffer), 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
-    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
+    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + (end.tv_usec - start.tv_usec) / 1000;
     printf("Total bytes sent: %d\nTime elapsed: %lu miliseconds\n", totalSent, miliseconds);
     // Close sockets
     close(sock);
@@ -1063,7 +1063,8 @@ int uds_dgram_server(int argc, char *argv[])
     int server_fd;
     struct sockaddr_un server_addr, client_addr;
     int bytes = 0, countbytes = 0;
-    char buffer[BUF_SIZE] = {0}, decoded[BUF_SIZE], totalData[DATA_SIZE] = {0};
+    char buffer[BUF_SIZE] = {0}, decoded[BUF_SIZE];
+    // , totalData[DATA_SIZE] = {0};
     struct timeval start, end;
 
     // Create server socket
@@ -1118,18 +1119,19 @@ int uds_dgram_server(int argc, char *argv[])
                 break;
             }
         }
-        memcpy(totalData + countbytes, buffer, bytes);
+        //memcpy(totalData + countbytes, buffer, bytes);
+        unsigned short calculated_checksum = calculate_checksum((unsigned short *)buffer, strlen(buffer));
+    if (calculated_checksum != received_checksum)
+    {
+        //printf("Checksums don't match\n");
+    }
         countbytes += bytes;
     }
     gettimeofday(&end, 0);
-    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
+    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + (end.tv_usec - start.tv_usec) / 1000;
 
     // Calculate checksum
-    unsigned short calculated_checksum = calculate_checksum((unsigned short *)totalData, strlen(totalData));
-    if (calculated_checksum != received_checksum)
-    {
-        printf("Checksums don't match\n");
-    }
+    
 
     printf("uds_dgram,%lu\n", miliseconds);
     close(server_fd);
@@ -1273,11 +1275,11 @@ int mmap_server(int argc, char *argv[])
     unsigned short calculated_checksum = calculate_checksum((unsigned short *)addr, len);
     if (calculated_checksum != ntohs(*(unsigned short *)addr_checksum))
     {
-        printf("Checksums don't match\n");
+        //printf("Checksums don't match\n");
     }
     shm_unlink(SHM_FILE_CS);
-    
-    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
+
+    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + (end.tv_usec - start.tv_usec) / 1000;
     printf("mmap,%lu\n", miliseconds);
 
     munmap(addr, len);
@@ -1324,7 +1326,78 @@ int mmap_server(int argc, char *argv[])
 
     return 0;
 }
+int pipe_client(int argc, char *argv[])
+{
+    char *fifo_name = "/tmp/myfifo";
+    int fifo_fd;
+    char buf[BUF_SIZE];
+    int bytes_read;
 
+    // Open the FIFO for writing
+    fifo_fd = open(fifo_name, O_WRONLY);
+    if (fifo_fd < 0)
+    {
+        perror("Error: Could not open FIFO\n");
+        exit(1);
+    }
+
+    // Read data from the input file and write to the FIFO
+    FILE *file = fopen(argv[6], "r");
+    if (file == NULL)
+    {
+        fprintf(stderr, "Error: Could not open file\n");
+        exit(1);
+    }
+
+    while ((bytes_read = fread(buf, 1, BUF_SIZE, file)) > 0)
+    {
+        if (write(fifo_fd, buf, bytes_read) < 0)
+        {
+            fprintf(stderr, "Error: Could not write to FIFO\n");
+            exit(1);
+        }
+    }
+
+    // Clean up
+    close(fifo_fd);
+    fclose(file);
+
+    return 0;
+}
+int pipe_server(int argc, char *argv[])
+{
+    char *fifo_name = "/tmp/myfifo";
+    int fifo_fd;
+    char buf[BUF_SIZE];
+
+    // Create the FIFO
+    mkfifo(fifo_name, 0666);
+
+    // Open the FIFO for reading
+    fifo_fd = open(fifo_name, O_RDONLY);
+    if (fifo_fd < 0)
+    {
+        fprintf(stderr, "Error: Could not open FIFO\n");
+        exit(1);
+    }
+
+    // Read data from the FIFO and write to stdout
+    int bytes_read = 0;
+    while ((bytes_read = read(fifo_fd, buf, BUF_SIZE)) > 0)
+    {
+        if (write(STDOUT_FILENO, buf, bytes_read) < 0)
+        {
+            fprintf(stderr, "Error: Could not write to stdout\n");
+            exit(1);
+        }
+    }
+
+    // Clean up
+    close(fifo_fd);
+    unlink(fifo_name);
+
+    return 0;
+}
 int send_type_to_server(int argc, char *argv[], char *type)
 {
     int sock = 0;
@@ -1365,6 +1438,7 @@ int send_type_to_server(int argc, char *argv[], char *type)
 
 char *getServerType(int argc, char *argv[])
 {
+    
     int server_fd = -1, new_socket = -1;
     struct sockaddr_in address;
     int opt = 1;
@@ -1422,7 +1496,6 @@ char *getServerType(int argc, char *argv[])
         close(new_socket);
         exit(EXIT_FAILURE);
     }
-
     close(server_fd);
     close(new_socket);
     return buffer;
@@ -1431,13 +1504,13 @@ char *getServerType(int argc, char *argv[])
 int main(int argc, char *argv[])
 {
 
-    if (argc < 3 || argc > 7 || (argc == 5 && !strcmp(argv[1], "-c")))
-    {
-        puts("Incorrect number of arguments\n");
-        printf("Server Usage: ...\n");
-        printf("Client Usage: ...\n");
-        return -1;
-    }
+    // if (argc < 3 || argc > 7 || (argc == 5 && !strcmp(argv[1], "-c")))
+    // {
+    //     puts("Incorrect number of arguments\n");
+    //     printf("Server Usage: ...\n");
+    //     printf("Client Usage: ...\n");
+    //     return -1;
+    // }
 
     if (!strcmp(argv[1], "-c"))
     {
@@ -1486,6 +1559,7 @@ int main(int argc, char *argv[])
             }
             else if (!strcmp(argv[5], "pipe"))
             {
+                pipe_client(argc, argv);
             }
         }
     }
@@ -1494,7 +1568,6 @@ int main(int argc, char *argv[])
         if (argv[3] != NULL)
         {
             char *serverType = getServerType(argc, argv);
-            // printf("Server type: %s\n", serverType);
             if (strcmp(serverType, "tcp4") == 0)
             {
                 tcp_server(argc, argv, IPV4);
@@ -1522,6 +1595,10 @@ int main(int argc, char *argv[])
             else if (strcmp(serverType, "mmap") == 0)
             {
                 mmap_server(argc, argv);
+            }
+            else if (strcmp(serverType, "pipe") == 0)
+            {
+                pipe_server(argc, argv);
             }
             free(serverType);
         }
@@ -1572,11 +1649,9 @@ char *generate_rand_str(int length)
     {
         return NULL;
     }
-
     for (int i = 0; i < length; i++)
     {
-        int num = rand() % 26;
-        string[i] = 'a' + num;
+        string[i] = 'a';
     }
     string[length] = '\0';
     return string;
