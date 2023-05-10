@@ -1250,6 +1250,16 @@ int mmap_server(int argc, char *argv[])
     //fwrite(addr, len, 1, stdout);
     //printf("Shared memory size: %ld\n", len);
 
+    char * recv_buffer = malloc(len);
+    char * pdata = (char *) addr;
+    for(int i = 0; i < len; i++)
+    {
+        recv_buffer[i] = pdata[i];
+    }
+    gettimeofday(&end, 0);
+    //printf("Total bytes received: %ld\n", strlen(recv_buffer));
+    free(recv_buffer);
+
     // Get checksum
     int shm_fd_checksum = shm_open(SHM_FILE_CS, O_RDONLY, 0666);
     if (shm_fd_checksum == -1)
@@ -1271,7 +1281,6 @@ int mmap_server(int argc, char *argv[])
         return -1;
     }
     close(shm_fd_checksum);
-    gettimeofday(&end, 0);
 
     // Calculate and compare checksums
     unsigned short calculated_checksum = calculate_checksum((unsigned short *)addr, len);
