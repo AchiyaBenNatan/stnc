@@ -1,16 +1,11 @@
 CC=gcc
 CFLAGS=-Wall
-
-STNC=stnc.c
-STNC_EXE=stnc
-
+STNC_A=stnc.c
+STNC_A_EXE=stnc
 .PHONY: all clean
+all: $(STNC_A_EXE)
 
-all: $(STNC_EXE)
-
-$(STNC_EXE): $(STNC)
+$(STNC_A_EXE): $(STNC_A)
 	$(CC) $(CFLAGS) -o $@ $^
-
-
 clean:
-	rm -f $(STNC_EXE) 
+	rm -f $(STNC_A_EXE)
