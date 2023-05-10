@@ -369,7 +369,6 @@ int tcp_client(int argc, char *argv[], enum addr type)
     {
         int bytes_to_read = (BUF_SIZE < strlen(data) - totalSent) ? BUF_SIZE : strlen(data) - totalSent;
         memcpy(buffer, data + totalSent, bytes_to_read);
-        printf("%lu\n",strlen(buffer));
         sendStream = send(sock, buffer, bytes_to_read, 0);
         if (-1 == sendStream)
         {
@@ -959,9 +958,8 @@ int uds_stream_server(int argc, char *argv[])
     unsigned short calculated_checksum = calculate_checksum((unsigned short *)buffer, strlen(buffer));
     if (calculated_checksum != received_checksum)
     {
-        printf("Checksums don't match\n");
+        //printf("Checksums don't match\n");
     }
-
     printf("uds_stream,%lu\n", miliseconds);
     close(client_fd);
     close(server_fd);
@@ -1025,12 +1023,9 @@ int uds_dgram_client(int argc, char *argv[])
         }
 
         totalSent += sendStream;
-        // printf("Bytes sent: %d\n", totalSent);
-        // printf ("bytes to read: %d\n", bytes_to_read);
         sendStream = 0;
         bzero(buffer, sizeof(buffer));
     }
-
     gettimeofday(&end, 0);
     strcpy(buffer, endMsg);
     sendto(sock, buffer, strlen(buffer), 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
