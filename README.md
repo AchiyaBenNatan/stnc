@@ -31,7 +31,7 @@ Part A: the first part is a chat between a chat and a client.
 You can communicate between the client and the server using the terminal.
 You can see the running process for this part in the **"starting"** section.\
 Part B: the second part is a preformance tool. you can check 8 types of communications such as: tcp , udp , uds dgram and stream, mmap and pipe.
-The Client generate a 100 MB string and send it to the server using the choosen communication.
+The Client generate a 100 MB string and send it to the server using the chosen communication.
 The server measure the time the transfer action took and print it to the terminal as follows: For example if you used ipv4 tcp and the transfer took 2130 ms the server will print : ipv4_tcp,2130.
 ## :sparkles: Features ##
 :heavy_check_mark: Feature 1: Chat tool that you can use send and recv without the recv will block the code from running. which means that you can send how many messeges you want and the server will get them all.\
