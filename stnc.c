@@ -19,7 +19,7 @@
 #define SHM_FILE "/FileSM"
 #define SHM_FILE_NAME "/FileName"
 #define SHM_FILE_CS "/FileCS"
-#define BUF_SIZE 64000
+#define BUF_SIZE 65507
 #define TCP_BUF_SIZE 1000000
 #define FIFO_NAME "/tmp/myfifo"
 #define DATA_SIZE 100000000
@@ -394,8 +394,8 @@ int tcp_client(int argc, char *argv[], enum addr type)
         }
 
         totalSent += sendStream;
-        //printf("Bytes sent: %d\n", totalSent);
-        //printf ("bytes to read: %d\n", bytes_to_read);
+        printf("Bytes sent: %d\n", totalSent);
+        printf ("bytes to read: %d\n", bytes_to_read);
         sendStream = 0;
         bzero(buffer, sizeof(buffer));
     }
@@ -537,7 +537,7 @@ int tcp_server(int argc, char *argv[], enum addr type)
         countbytes += bytes;
     }
     gettimeofday(&end, 0);
-    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
+    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + (end.tv_usec - start.tv_usec) / 1000;
     // Calculate checksum
     unsigned short calculated_checksum = calculate_checksum((unsigned short *)totalData, strlen(totalData));
     if (calculated_checksum != received_checksum)
@@ -646,7 +646,7 @@ int udp_client(int argc, char *argv[], enum addr type)
     }
     if (-1 == sendStream)
     {
-        printf("send() failed");
+        perror("send() failed");
         exit(1);
     }
 
@@ -665,7 +665,7 @@ int udp_client(int argc, char *argv[], enum addr type)
         }
         if (-1 == sendStream)
         {
-            printf("send() failed");
+            perror("send() failed");
             exit(1);
         }
 
@@ -1505,7 +1505,6 @@ char *getServerType(int argc, char *argv[])
         close(new_socket);
         exit(EXIT_FAILURE);
     }
-
     close(server_fd);
     close(new_socket);
     return buffer;
