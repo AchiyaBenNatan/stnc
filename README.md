@@ -70,7 +70,7 @@ $ ./stnc -c <IP> <port> -p <type> <communication>
 
 
 
-Made with :heart: by <a href="https://github.com/tjhv10" target="_blank">Achiya and Nitai</a>
+Made with :heart: by <a href="https://github.com/tjhv10" target="_blank">Achiya and Nitay</a>
 
 &#xa0;
 
