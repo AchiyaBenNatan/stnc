@@ -62,7 +62,7 @@ The following tools were used in this project:
 
 ```bash
 # Clone this project
-$ git clone https://github.com/{{YOUR_GITHUB_USERNAME}}/stnc
+$ git clone https://github.com/tjhv10/stnc
 
 # Access
 $ cd stnc
