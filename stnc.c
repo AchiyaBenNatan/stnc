@@ -537,7 +537,7 @@ int tcp_server(int argc, char *argv[], enum addr type)
         countbytes += bytes;
     }
     gettimeofday(&end, 0);
-    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + end.tv_usec - start.tv_usec / 1000;
+    unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + (end.tv_usec - start.tv_usec) / 1000;
     // Calculate checksum
     unsigned short calculated_checksum = calculate_checksum((unsigned short *)totalData, strlen(totalData));
     if (calculated_checksum != received_checksum)
@@ -1422,7 +1422,7 @@ int pipe_client(int argc, char *argv[])
 
 int pipe_server(int argc, char *argv[])
 {
-    int fifo_fd;
+    int fifo_fd, countbytes = 0;
     char buf[TCP_BUF_SIZE], *totalData = malloc(DATA_SIZE);
     struct timeval start, end;
     mkfifo(FIFO_NAME, 0666);
@@ -1457,12 +1457,12 @@ int pipe_server(int argc, char *argv[])
     close(shm_fd_checksum);
 
     // read from FIFO
-
     gettimeofday(&start, 0);
     while ((bytes_read = read(fifo_fd, buf, TCP_BUF_SIZE)) > 0)
     {
-        memcpy(totalData + bytes_read, buf, bytes_read);
-        printf("TotalData size: %ld\n", strlen(totalData));
+        memcpy(totalData + countbytes, buf, bytes_read);
+        countbytes += bytes_read;
+        //printf("TotalData size: %ld\n", strlen(totalData));
     }
     gettimeofday(&end, 0);
 
