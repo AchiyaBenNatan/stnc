@@ -20,6 +20,7 @@
 #define SHM_FILE_NAME "/FileName"
 #define SHM_FILE_CS "/FileCS"
 #define BUF_SIZE 64000
+#define TCP_BUF_SIZE 1000000
 #define FIFO_NAME "/tmp/myfifo"
 #define DATA_SIZE 100000000
 #define SOCKET_PATH "/tmp/my_socket.sock"
@@ -295,7 +296,7 @@ int tcp_client(int argc, char *argv[], enum addr type)
     
     int sock = 0;
     int sendStream = 0, totalSent = 0;
-    char buffer[BUF_SIZE] = {0};
+    char buffer[TCP_BUF_SIZE] = {0};
     struct sockaddr_in serv_addr4;
     struct sockaddr_in6 serv_addr6;
     struct timeval start, end;
@@ -383,7 +384,7 @@ int tcp_client(int argc, char *argv[], enum addr type)
     gettimeofday(&start, 0);
     while (totalSent < strlen(data))
     {
-        int bytes_to_read = (BUF_SIZE < strlen(data) - totalSent) ? BUF_SIZE : strlen(data) - totalSent;
+        int bytes_to_read = (TCP_BUF_SIZE < strlen(data) - totalSent) ? TCP_BUF_SIZE : strlen(data) - totalSent;
         memcpy(buffer, data + totalSent, bytes_to_read);
         sendStream = send(sock, buffer, bytes_to_read, 0);
         if (-1 == sendStream)
@@ -413,7 +414,7 @@ int tcp_server(int argc, char *argv[], enum addr type)
     struct sockaddr_in6 serverAddr6, clientAddr6;
     socklen_t clientAddressLen;
     int opt = 1, bytes = -1, countbytes = 0;
-    char buffer[BUF_SIZE] = {0}, * totalData = malloc(DATA_SIZE);
+    char buffer[TCP_BUF_SIZE] = {0}, * totalData = malloc(DATA_SIZE);
     struct timeval start, end;
 
     if (type == IPV4)
@@ -839,7 +840,7 @@ int uds_stream_client(int argc, char *argv[])
     int valread = -1, sendStream = 0, totalSent = 0;
     valread++;
     struct sockaddr_un server_address;
-    char buffer[BUF_SIZE];
+    char buffer[TCP_BUF_SIZE];
     struct timeval start, end;
 
     // Create socket
@@ -877,7 +878,7 @@ int uds_stream_client(int argc, char *argv[])
     gettimeofday(&start, 0);
     while (totalSent < strlen(data))
     {
-        int bytes_to_read = (BUF_SIZE < strlen(data) - totalSent) ? BUF_SIZE : strlen(data) - totalSent;
+        int bytes_to_read = (TCP_BUF_SIZE < strlen(data) - totalSent) ? TCP_BUF_SIZE : strlen(data) - totalSent;
         memcpy(buffer, data + totalSent, bytes_to_read);
         sendStream = send(sock, buffer, bytes_to_read, 0);
         if (-1 == sendStream)
@@ -905,7 +906,7 @@ int uds_stream_server(int argc, char *argv[])
 {
     int server_fd, client_fd;
     struct sockaddr_un address;
-    char buffer[BUF_SIZE], * totalData = malloc(DATA_SIZE);
+    char buffer[TCP_BUF_SIZE], * totalData = malloc(DATA_SIZE);
     struct timeval start, end;
     int bytes = 0, countbytes = 0;
 
@@ -1342,7 +1343,7 @@ int pipe_client(int argc, char *argv[])
 {
     send_type_to_server(argc,argv,"pipe");
     int fifo_fd;
-    char buf[BUF_SIZE];
+    char buf[TCP_BUF_SIZE];
     int bytes_read;
     // Open the FIFO for writing
     fifo_fd = open(FIFO_NAME, O_WRONLY);
@@ -1366,7 +1367,7 @@ int pipe_client(int argc, char *argv[])
         printf("Error opening file!\n");
         return -1;
     }
-    while ((bytes_read = fread(buf, 1, BUF_SIZE, fp)) > 0)
+    while ((bytes_read = fread(buf, 1, TCP_BUF_SIZE, fp)) > 0)
     {
         if (write(fifo_fd, buf, bytes_read) < 0)
         {
@@ -1386,7 +1387,7 @@ int pipe_client(int argc, char *argv[])
 int pipe_server(int argc, char *argv[])
 {
     int fifo_fd;
-    char buf[BUF_SIZE];
+    char buf[TCP_BUF_SIZE];
     struct timeval start, end;
     mkfifo(FIFO_NAME, 0666);
     fifo_fd = open(FIFO_NAME, O_RDONLY);
@@ -1397,7 +1398,7 @@ int pipe_server(int argc, char *argv[])
     }
     int bytes_read = 0;
     gettimeofday(&start, 0);
-    while ((bytes_read = read(fifo_fd, buf, BUF_SIZE)) > 0)
+    while ((bytes_read = read(fifo_fd, buf, TCP_BUF_SIZE)) > 0)
     {}
     gettimeofday(&end, 0);
     unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + (end.tv_usec - start.tv_usec) / 1000;
