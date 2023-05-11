@@ -48,6 +48,9 @@ $ git clone https://github.com/tjhv10/stnc
 # Access
 $ cd stnc
 
+# Create an exe file to run the program
+$ make
+
 # Run the project part A server:
 $ ./stnc -s <port>
 # Example: ./stnc -s 20123
