@@ -1,6 +1,10 @@
 {
     "files.associations": {
         "system_error": "c",
-        "in.h": "c"
+        "in.h": "c",
+        "string": "c",
+        "vector": "c",
+        "memory": "c",
+        "string_view": "c"
     }
 }

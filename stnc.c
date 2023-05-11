@@ -15,6 +15,7 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <errno.h>
+#include <openssl/sha.h>
 
 #define SHM_FILE "/FileSM"
 #define SHM_FILE_NAME "/FileName"
@@ -45,12 +46,13 @@ int uds_dgram_client(int argc, char *argv[]);
 int uds_dgram_server(int argc, char *argv[]);
 int mmap_client(int argc, char *argv[]);
 int mmap_server(int argc, char *argv[]);
+int pipe_client(int argc, char *argv[]);
+int pipe_server(int argc, char *argv[]);
 
-// support functions
+// aid functions
 char *getServerType(int argc, char *argv[]);
 int send_type_to_server(int argc, char *argv[], char *type);
 char *generate_rand_str(int length);
-unsigned short calculate_checksum(unsigned short *paddress, int len);
 
 int client(int argc, char *argv[])
 {
@@ -371,13 +373,19 @@ int tcp_client(int argc, char *argv[], enum addr type)
     char *data = generate_rand_str(DATA_SIZE);
 
     // Calculate and send checksum
-    unsigned short checksum = calculate_checksum((unsigned short *)data, strlen(data));
-    unsigned short checksum_net = htons(checksum);
-    memcpy(buffer, &checksum_net, sizeof(checksum_net));
-    sendStream = send(sock, buffer, sizeof(checksum_net), 0);
+    unsigned char hash[SHA_DIGEST_LENGTH];
+    SHA1((unsigned char *)data, strlen(data), hash);
+    char hash_str[SHA_DIGEST_LENGTH * 2 + 1];
+    for (int i = 0; i < SHA_DIGEST_LENGTH; i++)
+    {
+        sprintf(&hash_str[i * 2], "%02x", hash[i]);
+    }
+    hash_str[SHA_DIGEST_LENGTH * 2] = '\0';
+    sendStream = send(sock, hash_str, strlen(hash_str), 0);
     if (-1 == sendStream)
     {
         printf("send() failed");
+        close(sock);
         exit(1);
     }
 
@@ -513,15 +521,20 @@ int tcp_server(int argc, char *argv[], enum addr type)
     }
 
     // Receive checksum
-    unsigned short received_checksum;
-    if ((bytes = recv(ClientSocket, &received_checksum, sizeof(received_checksum), 0)) < 0)
+    char hash_str[SHA_DIGEST_LENGTH * 2 + 1];
+    bytes = recv(ClientSocket, hash_str, sizeof(hash_str), 0);
+    if (bytes < 0)
     {
         printf("recv failed. Sender inactive.\n");
         close(ServerSocket);
         close(ClientSocket);
         return -1;
     }
-    received_checksum = ntohs(received_checksum);
+    unsigned char recv_hash[SHA_DIGEST_LENGTH];
+    for (int i = 0; i < SHA_DIGEST_LENGTH; i++)
+    {
+        sscanf(&hash_str[i * 2], "%2hhx", &recv_hash[i]);
+    }
 
     gettimeofday(&start, 0);
     while (bytes != 0)
@@ -538,11 +551,17 @@ int tcp_server(int argc, char *argv[], enum addr type)
     }
     gettimeofday(&end, 0);
     unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + (end.tv_usec - start.tv_usec) / 1000;
+
     // Calculate checksum
-    unsigned short calculated_checksum = calculate_checksum((unsigned short *)totalData, strlen(totalData));
-    if (calculated_checksum != received_checksum)
+    unsigned char calculated_hash[SHA_DIGEST_LENGTH];
+    SHA1((unsigned char *)totalData, strlen(totalData), calculated_hash);
+    for (int i = 0; i < SHA_DIGEST_LENGTH; i++)
     {
-        printf("Checksums don't match\n");
+        if (calculated_hash[i] != recv_hash[i])
+        {
+            printf("Checksums don't match\n");
+            break;
+        }
     }
 
     if (type == IPV4)
@@ -553,6 +572,7 @@ int tcp_server(int argc, char *argv[], enum addr type)
     {
         printf("ipv6_tcp,%lu\n", miliseconds);
     }
+
     // Close server socket
     close(ServerSocket);
     close(ClientSocket);
@@ -633,16 +653,21 @@ int udp_client(int argc, char *argv[], enum addr type)
     char *data = generate_rand_str(DATA_SIZE);
 
     // Calculate and send checksum
-    unsigned short checksum = calculate_checksum((unsigned short *)data, strlen(data));
-    unsigned short checksum_net = htons(checksum);
-    memcpy(buffer, &checksum_net, sizeof(checksum_net));
+    unsigned char hash[SHA_DIGEST_LENGTH];
+    SHA1((unsigned char *)data, strlen(data), hash);
+    char hash_str[SHA_DIGEST_LENGTH * 2 + 1];
+    for (int i = 0; i < SHA_DIGEST_LENGTH; i++)
+    {
+        sprintf(&hash_str[i * 2], "%02x", hash[i]);
+    }
+    hash_str[SHA_DIGEST_LENGTH * 2] = '\0';
     if (type == IPV4)
     {
-        sendStream = sendto(sock, buffer, sizeof(checksum_net), 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+        sendStream = sendto(sock, hash_str, strlen(hash_str), 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
     }
     else if (type == IPV6)
     {
-        sendStream = sendto(sock, buffer, sizeof(checksum_net), 0, (struct sockaddr *)&serv_addr6, sizeof(serv_addr6));
+        sendStream = sendto(sock, hash_str, strlen(hash_str), 0, (struct sockaddr *)&serv_addr6, sizeof(serv_addr6));
     }
     if (-1 == sendStream)
     {
@@ -651,6 +676,7 @@ int udp_client(int argc, char *argv[], enum addr type)
     }
 
     gettimeofday(&start, 0);
+    int i = 0;
     while (totalSent < strlen(data))
     {
         int bytes_to_read = (BUF_SIZE < strlen(data) - totalSent) ? BUF_SIZE : strlen(data) - totalSent;
@@ -670,9 +696,13 @@ int udp_client(int argc, char *argv[], enum addr type)
         }
 
         totalSent += sendStream;
-        // printf("Bytes sent: %d\n", totalSent);
+        if (i % 200 == 0 || bytes_to_read < BUF_SIZE)
+        {
+            printf("Total bytes sent: %d\n", totalSent);
+        }
         // printf ("bytes to read: %d\n", bytes_to_read);
         sendStream = 0;
+        i++;
         bzero(buffer, sizeof(buffer));
     }
 
@@ -688,7 +718,7 @@ int udp_client(int argc, char *argv[], enum addr type)
     }
 
     unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + (end.tv_usec - start.tv_usec) / 1000;
-    printf("Total bytes sent: %d\nTime elapsed: %lu miliseconds\n", totalSent, miliseconds);
+    printf("Time elapsed: %lu miliseconds\n", miliseconds);
 
     // Close socket
     close(sock);
@@ -760,14 +790,14 @@ int udp_server(int argc, char *argv[], enum addr type)
     }
 
     // Receive checksum
-    unsigned short received_checksum;
+    char hash_str[SHA_DIGEST_LENGTH * 2 + 1];
     if (type == IPV4)
     {
-        bytes = recvfrom(ServerSocket, &received_checksum, sizeof(received_checksum), 0, (struct sockaddr *)&clientAddr, &clientAddressLen);
+        bytes = recvfrom(ServerSocket, hash_str, sizeof(hash_str), 0, (struct sockaddr *)&clientAddr, &clientAddressLen);
     }
     else if (type == IPV6)
     {
-        bytes = recvfrom(ServerSocket, &received_checksum, sizeof(received_checksum), 0, (struct sockaddr *)&clientAddr6, &clientAddressLen);
+        bytes = recvfrom(ServerSocket, hash_str, sizeof(hash_str), 0, (struct sockaddr *)&clientAddr6, &clientAddressLen);
     }
     if (bytes < 0)
     {
@@ -775,7 +805,11 @@ int udp_server(int argc, char *argv[], enum addr type)
         close(ServerSocket);
         return -1;
     }
-    received_checksum = ntohs(received_checksum);
+    unsigned char recv_hash[SHA_DIGEST_LENGTH];
+    for (int i = 0; i < SHA_DIGEST_LENGTH; i++)
+    {
+        sscanf(&hash_str[i * 2], "%2hhx", &recv_hash[i]);
+    }
 
     // printf("Server is listening for incoming messages...\n");
     gettimeofday(&start, 0);
@@ -815,11 +849,17 @@ int udp_server(int argc, char *argv[], enum addr type)
     gettimeofday(&end, 0);
     unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + (end.tv_usec - start.tv_usec) / 1000;
     // Calculate checksum
-    unsigned short calculated_checksum = calculate_checksum((unsigned short *)totalData, strlen(totalData));
-    if (calculated_checksum != received_checksum)
+    unsigned char calculated_hash[SHA_DIGEST_LENGTH];
+    SHA1((unsigned char *)totalData, strlen(totalData), calculated_hash);
+    for (int i = 0; i < SHA_DIGEST_LENGTH; i++)
     {
-        printf("Checksums don't match\n");
+        if (calculated_hash[i] != recv_hash[i])
+        {
+            printf("Checksums don't match\n");
+            break;
+        }
     }
+
     if (type == IPV4)
     {
         printf("ipv4_udp,%lu\n", miliseconds);
@@ -865,13 +905,19 @@ int uds_stream_client(int argc, char *argv[])
     char *data = generate_rand_str(DATA_SIZE);
 
     // Calculate and send checksum
-    unsigned short checksum = calculate_checksum((unsigned short *)data, strlen(data));
-    unsigned short checksum_net = htons(checksum);
-    memcpy(buffer, &checksum_net, sizeof(checksum_net));
-    sendStream = send(sock, buffer, sizeof(checksum_net), 0);
+    unsigned char hash[SHA_DIGEST_LENGTH];
+    SHA1((unsigned char *)data, strlen(data), hash);
+    char hash_str[SHA_DIGEST_LENGTH * 2 + 1];
+    for (int i = 0; i < SHA_DIGEST_LENGTH; i++)
+    {
+        sprintf(&hash_str[i * 2], "%02x", hash[i]);
+    }
+    hash_str[SHA_DIGEST_LENGTH * 2] = '\0';
+    sendStream = send(sock, hash_str, strlen(hash_str), 0);
     if (-1 == sendStream)
     {
         printf("send() failed");
+        close(sock);
         exit(1);
     }
 
@@ -943,16 +989,22 @@ int uds_stream_server(int argc, char *argv[])
     }
 
     // Receive checksum
-    unsigned short received_checksum;
-    if ((bytes = recv(client_fd, &received_checksum, sizeof(received_checksum), 0)) < 0)
+    char hash_str[SHA_DIGEST_LENGTH * 2 + 1];
+    bytes = recv(client_fd, hash_str, sizeof(hash_str), 0);
+    if (bytes < 0)
     {
         printf("recv failed. Sender inactive.\n");
-        close(client_fd);
         close(server_fd);
+        close(client_fd);
         return -1;
     }
-    received_checksum = ntohs(received_checksum);
+    unsigned char recv_hash[SHA_DIGEST_LENGTH];
+    for (int i = 0; i < SHA_DIGEST_LENGTH; i++)
+    {
+        sscanf(&hash_str[i * 2], "%2hhx", &recv_hash[i]);
+    }
 
+    // Receive data
     gettimeofday(&start, 0);
     while (1)
     {
@@ -975,10 +1027,15 @@ int uds_stream_server(int argc, char *argv[])
     unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + (end.tv_usec - start.tv_usec) / 1000;
 
     // Calculate checksum
-    unsigned short calculated_checksum = calculate_checksum((unsigned short *)totalData, strlen(totalData));
-    if (calculated_checksum != received_checksum)
+    unsigned char calculated_hash[SHA_DIGEST_LENGTH];
+    SHA1((unsigned char *)totalData, strlen(totalData), calculated_hash);
+    for (int i = 0; i < SHA_DIGEST_LENGTH; i++)
     {
-        printf("Checksums don't match\n");
+        if (calculated_hash[i] != recv_hash[i])
+        {
+            printf("Checksums don't match\n");
+            break;
+        }
     }
 
     printf("uds_stream,%lu\n", miliseconds);
@@ -1022,16 +1079,23 @@ int uds_dgram_client(int argc, char *argv[])
     char *data = generate_rand_str(DATA_SIZE);
 
     // Calculate and send checksum
-    unsigned short checksum = calculate_checksum((unsigned short *)data, strlen(data));
-    unsigned short checksum_net = htons(checksum);
-    memcpy(buffer, &checksum_net, sizeof(checksum_net));
-    sendStream = sendto(sock, buffer, sizeof(checksum_net), 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
+    unsigned char hash[SHA_DIGEST_LENGTH];
+    SHA1((unsigned char *)data, strlen(data), hash);
+    char hash_str[SHA_DIGEST_LENGTH * 2 + 1];
+    for (int i = 0; i < SHA_DIGEST_LENGTH; i++)
+    {
+        sprintf(&hash_str[i * 2], "%02x", hash[i]);
+    }
+    hash_str[SHA_DIGEST_LENGTH * 2] = '\0';
+    sendStream = sendto(sock, hash_str, strlen(hash_str), 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
     if (-1 == sendStream)
     {
         printf("send() failed");
         exit(1);
     }
 
+    // Send data
+    int i = 0;
     gettimeofday(&start, 0);
     while (totalSent < strlen(data))
     {
@@ -1045,7 +1109,11 @@ int uds_dgram_client(int argc, char *argv[])
         }
 
         totalSent += sendStream;
-        // printf("Bytes sent: %d\n", totalSent);
+        if (i % 200 == 0 || bytes_to_read < BUF_SIZE)
+        {
+            printf("Total bytes sent: %d\n", totalSent);
+        }
+        i++;
         // printf ("bytes to read: %d\n", bytes_to_read);
         sendStream = 0;
         bzero(buffer, sizeof(buffer));
@@ -1091,16 +1159,21 @@ int uds_dgram_server(int argc, char *argv[])
     socklen_t clientAddressLen;
 
     // Receive checksum
-    unsigned short received_checksum;
-    bytes = recvfrom(server_fd, &received_checksum, sizeof(received_checksum), 0, (struct sockaddr *)&client_addr, &clientAddressLen);
+    char hash_str[SHA_DIGEST_LENGTH * 2 + 1];
+    bytes = recvfrom(server_fd, hash_str, sizeof(hash_str), 0, (struct sockaddr *)&client_addr, &clientAddressLen);
     if (bytes < 0)
     {
         printf("recv failed. Sender inactive.\n");
         close(server_fd);
         return -1;
     }
-    received_checksum = ntohs(received_checksum);
+    unsigned char recv_hash[SHA_DIGEST_LENGTH];
+    for (int i = 0; i < SHA_DIGEST_LENGTH; i++)
+    {
+        sscanf(&hash_str[i * 2], "%2hhx", &recv_hash[i]);
+    }
 
+    // Receive data
     gettimeofday(&start, 0);
     while (1)
     {
@@ -1129,10 +1202,15 @@ int uds_dgram_server(int argc, char *argv[])
     unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + (end.tv_usec - start.tv_usec) / 1000;
 
     // Calculate checksum
-    unsigned short calculated_checksum = calculate_checksum((unsigned short *)totalData, strlen(totalData));
-    if (calculated_checksum != received_checksum)
+    unsigned char calculated_hash[SHA_DIGEST_LENGTH];
+    SHA1((unsigned char *)totalData, strlen(totalData), calculated_hash);
+    for (int i = 0; i < SHA_DIGEST_LENGTH; i++)
     {
-        printf("Checksums don't match\n");
+        if (calculated_hash[i] != recv_hash[i])
+        {
+            printf("Checksums don't match\n");
+            break;
+        }
     }
 
     printf("uds_dgram,%lu\n", miliseconds);
@@ -1174,9 +1252,9 @@ int mmap_client(int argc, char *argv[])
     }
     close(fd);
 
-    // Calculate and send checksum
-    unsigned short checksum = calculate_checksum((unsigned short *)data, strlen(data));
-    unsigned short checksum_net = htons(checksum);
+    // Calculate and save checksum
+    unsigned char hash[SHA_DIGEST_LENGTH];
+    SHA1((unsigned char *)data, strlen(data), hash);
     free(data);
 
     int shm_fd = shm_open(SHM_FILE, O_CREAT | O_RDWR, 0666);
@@ -1190,7 +1268,7 @@ int mmap_client(int argc, char *argv[])
 
     int res = ftruncate(shm_fd, dataLen);
     int res2 = ftruncate(shm_fd_name, strlen(argv[6]));
-    int res3 = ftruncate(shm_fd_checksum, sizeof(checksum_net));
+    int res3 = ftruncate(shm_fd_checksum, sizeof(hash));
     if (res == -1 || res2 == -1 || res3 == -1)
     {
         printf("ftruncate() failed\n");
@@ -1199,7 +1277,7 @@ int mmap_client(int argc, char *argv[])
 
     void *shm_addr = mmap(NULL, dataLen, PROT_WRITE, MAP_SHARED, shm_fd, 0);
     void *shm_name_addr = mmap(NULL, strlen(argv[6]), PROT_WRITE, MAP_SHARED, shm_fd_name, 0);
-    void *shm_checksum_addr = mmap(NULL, sizeof(checksum_net), PROT_WRITE, MAP_SHARED, shm_fd_checksum, 0);
+    void *shm_checksum_addr = mmap(NULL, sizeof(hash), PROT_WRITE, MAP_SHARED, shm_fd_checksum, 0);
     if (shm_addr == MAP_FAILED || shm_name_addr == MAP_FAILED || shm_checksum_addr == MAP_FAILED)
     {
         printf("mmap() failed\n");
@@ -1208,12 +1286,12 @@ int mmap_client(int argc, char *argv[])
 
     memcpy(shm_addr, addr, dataLen);
     memcpy(shm_name_addr, argv[6], strlen(argv[6]));
-    memcpy(shm_checksum_addr, &checksum_net, sizeof(checksum_net));
+    memcpy(shm_checksum_addr, &hash, sizeof(hash));
 
     munmap(addr, dataLen);
     munmap(shm_addr, dataLen);
     munmap(shm_name_addr, strlen(argv[6]));
-    munmap(shm_checksum_addr, sizeof(checksum_net));
+    munmap(shm_checksum_addr, sizeof(hash));
     close(shm_fd);
     close(shm_fd_name);
     close(shm_fd_checksum);
@@ -1251,15 +1329,14 @@ int mmap_server(int argc, char *argv[])
     // fwrite(addr, len, 1, stdout);
     // printf("Shared memory size: %ld\n", len);
 
-    char *recv_buffer = malloc(len);
+    char *recv_data = malloc(len);
     char *pdata = (char *)addr;
     for (int i = 0; i < len; i++)
     {
-        recv_buffer[i] = pdata[i];
+        recv_data[i] = pdata[i];
     }
     gettimeofday(&end, 0);
     // printf("Total bytes received: %ld\n", strlen(recv_buffer));
-    
 
     // Get checksum
     int shm_fd_checksum = shm_open(SHM_FILE_CS, O_RDONLY, 0666);
@@ -1282,15 +1359,21 @@ int mmap_server(int argc, char *argv[])
         return -1;
     }
     close(shm_fd_checksum);
+    
 
-    // Calculate and compare checksums
-    unsigned short calculated_checksum = calculate_checksum((unsigned short *)recv_buffer, strlen(recv_buffer));
-    if (calculated_checksum != ntohs(*(unsigned short *)addr_checksum))
+    // Calculate and Compare Checksums
+    unsigned char calculated_hash[SHA_DIGEST_LENGTH];
+    SHA1((unsigned char *)recv_data, strlen(recv_data), calculated_hash);
+    for (int i = 0; i < SHA_DIGEST_LENGTH; i++)
     {
-        printf("Checksums don't match\n");
+        if (calculated_hash[i] != ((unsigned char *)addr_checksum)[i])
+        {
+            printf("Checksums don't match\n");
+            break;
+        }
     }
     shm_unlink(SHM_FILE_CS);
-    free(recv_buffer);
+    free(recv_data);
 
     unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + (end.tv_usec - start.tv_usec) / 1000;
     printf("mmap,%lu\n", miliseconds);
@@ -1347,9 +1430,9 @@ int pipe_client(int argc, char *argv[])
     int bytes_read;
     char *data = generate_rand_str(DATA_SIZE);
 
-    // Calculate and save checksum
-    unsigned short checksum = calculate_checksum((unsigned short *)data, strlen(data));
-    unsigned short checksum_net = htons(checksum);
+    // Calculate and save checksum into shared memory
+    unsigned char hash[SHA_DIGEST_LENGTH];
+    SHA1((unsigned char *)data, strlen(data), hash);
 
     int shm_fd_checksum = shm_open(SHM_FILE_CS, O_CREAT | O_RDWR, 0666);
     if (shm_fd_checksum == -1)
@@ -1358,25 +1441,24 @@ int pipe_client(int argc, char *argv[])
         return -1;
     }
 
-    int res = ftruncate(shm_fd_checksum, sizeof(checksum_net));
+    int res = ftruncate(shm_fd_checksum, sizeof(hash));
     if (res == -1)
     {
         printf("ftruncate() failed\n");
         return -1;
     }
 
-    void *shm_checksum_addr = mmap(NULL, sizeof(checksum_net), PROT_WRITE, MAP_SHARED, shm_fd_checksum, 0);
+    void *shm_checksum_addr = mmap(NULL, sizeof(hash), PROT_WRITE, MAP_SHARED, shm_fd_checksum, 0);
     if (shm_checksum_addr == MAP_FAILED)
     {
         printf("mmap() failed\n");
         return -1;
     }
-    memcpy(shm_checksum_addr, &checksum_net, sizeof(checksum_net));
-    munmap(shm_checksum_addr, sizeof(checksum_net));
+    memcpy(shm_checksum_addr, &hash, sizeof(hash));
+    munmap(shm_checksum_addr, sizeof(hash));
     close(shm_fd_checksum);
 
     // Send type to server
-
     send_type_to_server(argc, argv, "pipe");
 
     // Open the FIFO for writing
@@ -1386,7 +1468,7 @@ int pipe_client(int argc, char *argv[])
         perror("Error: Could not open FIFO\n");
         exit(1);
     }
-    
+
     // Write data to FIFO
     FILE *fpw = fopen(argv[6], "w");
     if (fpw == NULL)
@@ -1462,15 +1544,20 @@ int pipe_server(int argc, char *argv[])
     {
         memcpy(totalData + countbytes, buf, bytes_read);
         countbytes += bytes_read;
-        //printf("TotalData size: %ld\n", strlen(totalData));
+        // printf("TotalData size: %ld\n", strlen(totalData));
     }
     gettimeofday(&end, 0);
 
-    // Calculate and compare checksums
-    unsigned short calculated_checksum = calculate_checksum((unsigned short *)totalData, strlen(totalData));
-    if (calculated_checksum != ntohs(*(unsigned short *)addr_checksum))
+    // Calculate and Compare Checksums
+    unsigned char calculated_hash[SHA_DIGEST_LENGTH];
+    SHA1((unsigned char *)totalData, strlen(totalData), calculated_hash);
+    for (int i = 0; i < SHA_DIGEST_LENGTH; i++)
     {
-        printf("Checksums don't match\n");
+        if (calculated_hash[i] != ((unsigned char *)addr_checksum)[i])
+        {
+            printf("Checksums don't match\n");
+            break;
+        }
     }
 
     unsigned long miliseconds = (end.tv_sec - start.tv_sec) * 1000 + (end.tv_usec - start.tv_usec) / 1000;
@@ -1701,32 +1788,6 @@ int main(int argc, char *argv[])
     return 0;
 }
 
-unsigned short calculate_checksum(unsigned short *paddress, int len)
-{
-    int nleft = len;
-    int sum = 0;
-    unsigned short *w = paddress;
-    unsigned short answer = 0;
-
-    while (nleft > 1)
-    {
-        sum += *w++;
-        nleft -= 2;
-    }
-
-    if (nleft == 1)
-    {
-        *((unsigned char *)&answer) = *((unsigned char *)w);
-        sum += answer;
-    }
-
-    // add back carry outs from top 16 bits to low 16 bits
-    sum = (sum >> 16) + (sum & 0xffff); // add hi 16 to low 16
-    sum += (sum >> 16);                 // add carry
-    answer = ~sum;                      // truncate to 16 bits
-
-    return answer;
-}
 char *generate_rand_str(int length)
 {
     char *string = malloc(length + 1);

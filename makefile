@@ -6,6 +6,6 @@ STNC_A_EXE=stnc
 all: $(STNC_A_EXE)
 
 $(STNC_A_EXE): $(STNC_A)
-	$(CC) $(CFLAGS) -o $@ $^
+	$(CC) $(CFLAGS) -o $@ $^ -lssl -lcrypto
 clean:
 	rm -f $(STNC_A_EXE)
