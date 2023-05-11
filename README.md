@@ -15,8 +15,6 @@
 
   <img alt="Repository size" src="https://img.shields.io/github/repo-size/tjhv10/stnc?color=56BEB8">
 
-  <img alt="License" src="https://img.shields.io/github/license/tjhv10/stnc?color=56BEB8">
-
   <!-- <img alt="Github issues" src="https://img.shields.io/github/issues/{{YOUR_GITHUB_USERNAME}}/stnc?color=56BEB8" /> -->
 
   <!-- <img alt="Github forks" src="https://img.shields.io/github/forks/{{YOUR_GITHUB_USERNAME}}/stnc?color=56BEB8" /> -->
@@ -35,28 +33,21 @@
 <p align="center">
   <a href="#dart-about">About</a> &#xa0; | &#xa0; 
   <a href="#sparkles-features">Features</a> &#xa0; | &#xa0;
-  <a href="#white_check_mark-requirements">Requirements</a> &#xa0; | &#xa0;
   <a href="#checkered_flag-starting">Starting</a> &#xa0; | &#xa0;
-  <a href="#memo-license">License</a> &#xa0; | &#xa0;
-  <a href="https://github.com/{{YOUR_GITHUB_USERNAME}}" target="_blank">Author</a>
+  <a href="https://github.com/tjhv10" target="_blank">Author</a>
 </p>
 
 <br>
 
 ## :dart: About ##
 
-Describe your project
+
 
 ## :sparkles: Features ##
 
 :heavy_check_mark: Feature 1;\
 :heavy_check_mark: Feature 2;\
 :heavy_check_mark: Feature 3;
-
-## :rocket: Technologies ##
-
-The following tools were used in this project:
-
 
 ## :checkered_flag: Starting ##
 
