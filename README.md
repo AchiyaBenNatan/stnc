@@ -27,7 +27,7 @@
 
 ## :dart: About ##
 This project has two parts:\
-Part A: the first part is a chat between a chat and a client.
+## Part A: ## the first part is a chat between a chat and a client.
 You can communicate between the client and the server using the terminal.
 You can see the running process for this part in the **"starting"** section.\
 Part B: the second part is a preformance tool. you can check 8 types of communications such as: tcp , udp , uds dgram and stream, mmap and pipe.
