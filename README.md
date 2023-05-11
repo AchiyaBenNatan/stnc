@@ -9,7 +9,7 @@
 <h1 align="center">Stnc</h1>
 
 <p align="center">
-  <img alt="Github top language" src="https://img.shields.io/github/languages/top/{tjhv10}/stnc?color=56BEB8">
+  <img alt="Github top language" src="https://img.shields.io/github/languages/top/tjhv10/stnc?color=56BEB8">
 
   <img alt="Github language count" src="https://img.shields.io/github/languages/count/{{YOUR_GITHUB_USERNAME}}/stnc?color=56BEB8">
 
