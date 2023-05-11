@@ -26,7 +26,7 @@
 <br>
 
 ## :dart: About ##
-This project has two parts:
+This project has two parts:\
 Part A: the first part is a chat between a chat and a client.
 You can communicate between the client and the server using the terminal.
 You can see the running process for this part in the **"starting"** section.\
