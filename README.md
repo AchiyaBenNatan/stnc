@@ -46,13 +46,18 @@ $ git clone https://github.com/tjhv10/stnc
 # Access
 $ cd stnc
 
-# Install dependencies
-$ yarn
-
-# Run the project
-$ yarn start
-
-# The server will initialize in the <http://localhost:3000>
+# Run the project part A server:
+$ ./stnc -s <port>
+# Example: ./stnc -s 20123
+# Run the project part A client:
+$ ./stnc -c <IP> <port>
+# Example: ./stnc -c 10.0.2.15 20123
+# Run the project part B server:
+$ ./stnc -s <port> -p(for preformance check) -q (for quiet mode)
+# Example: ./stnc -s 20123 -p -q
+# Run the project part B client:
+$ ./stnc -c <IP> <port> -p <type> <communication>
+# Example: ./stnc -c 10.0.2.15 20123 -p ipv4 tcp
 ```
 
 
