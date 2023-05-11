@@ -1674,12 +1674,11 @@ char *getServerType(int argc, char *argv[])
 
 int main(int argc, char *argv[])
 {
-
-    if (argc < 3 || argc > 7 || (argc == 5 && !strcmp(argv[1], "-c")))
+    if (argc < 3 || argc > 7 || (argc == 5 && !strcmp(argv[1], "-c")) || (argc == 6 && !strcmp(argv[1], "-c")))
     {
         puts("Incorrect number of arguments\n");
-        printf("Server Usage: ...\n");
-        printf("Client Usage: ...\n");
+        printf("Server Usage: ./stnc -s <Port> <Check Flag> <Quiet Flag>\nCheck Flag (not obligatory): -p (test communication)\nQuiet Flag (with check flag): -q (only testing results will be printed)\n\n");
+        printf("Client Usage: ./stnc -c <IP> <Port> <Check Flag> <Type> <Param>\nCheck Flag (not obligatory): -p\nType (with check flag): ipv4/ipv6 | uds | mmap/pipe\nParam (with type): udp/tcp | dgram/stream | filename\n");
         return -1;
     }
 
@@ -1782,8 +1781,8 @@ int main(int argc, char *argv[])
     else
     {
         puts("Incorrect arguments\n");
-        printf("Server Usage: ...\n");
-        printf("Client Usage: ...\n");
+        printf("Server Usage: ./stnc -s <Port> <Check Flag> <Quiet Flag>\nCheck Flag (not obligatory): -p (test communication)\nQuiet Flag (with check flag): -q (only testing results will be printed)\n\n");
+        printf("Client Usage: ./stnc -c <IP> <Port> <Check Flag> <Type> <Param>\nCheck Flag (not obligatory): -p\nType (with check flag): ipv4/ipv6 | uds | mmap/pipe\nParam (with type): udp/tcp | dgram/stream | filename\n");
     }
     return 0;
 }
