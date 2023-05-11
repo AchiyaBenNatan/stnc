@@ -36,8 +36,8 @@ The server measure the time the transfer action took and print it to the termina
 ## :sparkles: Features ##
 
 :heavy_check_mark: Feature 1; safasf\
-:heavy_check_mark: Feature 2;saf\
-:heavy_check_mark: Feature 3;asg
+:heavy_check_mark: Feature 2; saf\
+:heavy_check_mark: Feature 3; asg
 
 ## :checkered_flag: Starting ##
 
